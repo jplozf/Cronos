@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <EditText
+        android:id="@+id/edit_timer_label"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Timer Label" />
+
+    <EditText
+        android:id="@+id/edit_timer_minutes"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Minutes"
+        android:inputType="number" />
+
+    <EditText
+        android:id="@+id/edit_timer_seconds"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Seconds"
+        android:inputType="number" />
+
+    <Button
+        android:id="@+id/delete_timer_button"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="end"
+        android:layout_marginTop="16dp"
+        android:text="Delete"
+        android:backgroundTint="@android:color/holo_red_dark" />
+
+</LinearLayout>
