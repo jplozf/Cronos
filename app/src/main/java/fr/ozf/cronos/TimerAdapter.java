@@ -37,6 +37,11 @@ public class TimerAdapter extends RecyclerView.Adapter<TimerAdapter.TimerViewHol
         this.context = context;
     }
 
+    public void setTimers(List<Timer> newTimers) {
+        this.timerList = newTimers;
+        notifyDataSetChanged();
+    }
+
         @Override
         public TimerViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
             View view = LayoutInflater.from(parent.getContext()).inflate(R.layout.timer_item, parent, false);

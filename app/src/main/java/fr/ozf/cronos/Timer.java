@@ -6,6 +6,11 @@ public class Timer {
     private long timeLeftInMillis;
     private boolean isRunning;
 
+    // No-argument constructor for Gson deserialization
+    public Timer() {
+        // Default values or leave for Gson to populate
+    }
+
     public Timer(String label, long totalTimeInMillis) {
         this.label = label;
         this.totalTimeInMillis = totalTimeInMillis;

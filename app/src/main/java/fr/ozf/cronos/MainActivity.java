@@ -28,6 +28,7 @@ import java.util.concurrent.TimeUnit;
 
 import fr.ozf.cronos.databinding.ActivityMainBinding;
 
+import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -40,6 +41,7 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
     private static final String TOTAL_ROUNDS_KEY = "totalRounds";
     private static final String SHARED_PREFS_SCHEMES = "sharedPrefsSchemes";
     private static final String SCHEME_NAMES_KEY = "schemeNames";
+    private static final String CURRENT_SCHEME_NAME_KEY = "currentSchemeName";
 
     private ActivityMainBinding binding;
     private TimerAdapter timerAdapter;
@@ -48,6 +50,7 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
     private TextView totalDurationTextView;
     private int currentRound = 1;
     private int totalRounds = 10; // Default total rounds
+    private String currentSchemeName = "Default";
 
     private Gson gson = new Gson();
 
@@ -66,6 +69,7 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
         loadData(); // Load saved data
 
         updateRoundDisplay();
+        updateTitleBar(); // Initial update of the title bar
 
         roundDisplayTextView.setOnClickListener(v -> {
             AlertDialog.Builder builder = new AlertDialog.Builder(this);
@@ -241,6 +245,7 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
         editor.putString(TIMER_LIST_KEY, json);
         editor.putInt(CURRENT_ROUND_KEY, currentRound);
         editor.putInt(TOTAL_ROUNDS_KEY, totalRounds);
+        editor.putString(CURRENT_SCHEME_NAME_KEY, currentSchemeName); // Save current scheme name
         editor.apply();
     }
 
@@ -256,6 +261,7 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
 
         currentRound = sharedPreferences.getInt(CURRENT_ROUND_KEY, 1);
         totalRounds = sharedPreferences.getInt(TOTAL_ROUNDS_KEY, 10);
+        currentSchemeName = sharedPreferences.getString(CURRENT_SCHEME_NAME_KEY, "Default"); // Load current scheme name
     }
 
     private void showSaveSchemeDialog() {
@@ -265,12 +271,15 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
         builder.setView(dialogView);
 
         EditText editSchemeName = dialogView.findViewById(R.id.edit_scheme_name);
+        editSchemeName.setText(currentSchemeName); // Set current scheme name as default
 
         builder.setTitle("Save Scheme");
         builder.setPositiveButton("Save", (dialog, which) -> {
             String schemeName = editSchemeName.getText().toString().trim();
             if (!schemeName.isEmpty()) {
                 saveScheme(schemeName);
+                currentSchemeName = schemeName; // Update current scheme name after saving
+                updateTitleBar(); // Update title bar after saving
                 Toast.makeText(this, "Scheme '" + schemeName + "' saved", Toast.LENGTH_SHORT).show();
             } else {
                 Toast.makeText(this, "Scheme name cannot be empty", Toast.LENGTH_SHORT).show();
@@ -283,6 +292,12 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
     private void saveScheme(String schemeName) {
         SharedPreferences sharedPreferences = getSharedPreferences(SHARED_PREFS_SCHEMES, MODE_PRIVATE);
         SharedPreferences.Editor editor = sharedPreferences.edit();
+
+        // Log timer details before saving
+        Log.d("SaveScheme", "Saving scheme: " + schemeName);
+        for (int i = 0; i < timerList.size(); i++) {
+            Log.d("SaveScheme", "Timer " + i + ": label=" + timerList.get(i).getLabel() + ", totalTimeInMillis=" + timerList.get(i).getTotalTimeInMillis());
+        }
 
         // Save timer list
         String timerListJson = gson.toJson(timerList);
@@ -314,6 +329,8 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
         schemeListView.setOnItemClickListener((parent, view, position, id) -> {
             String selectedSchemeName = schemeNames.get(position);
             loadScheme(selectedSchemeName);
+            currentSchemeName = selectedSchemeName; // Update current scheme name after loading
+            updateTitleBar(); // Update title bar after loading
             Toast.makeText(this, "Scheme '" + selectedSchemeName + "' loaded", Toast.LENGTH_SHORT).show();
             // Dismiss the dialog after loading
             ((AlertDialog) parent.getTag()).dismiss();
@@ -337,6 +354,17 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
 
         if (timerList == null) {
             timerList = new ArrayList<>();
+        } else {
+            // Log timer details after loading
+            Log.d("LoadScheme", "Loaded scheme: " + schemeName);
+            for (int i = 0; i < timerList.size(); i++) {
+                Log.d("LoadScheme", "Timer " + i + ": label=" + timerList.get(i).getLabel() + ", totalTimeInMillis=" + timerList.get(i).getTotalTimeInMillis());
+            }
+            // Ensure timeLeftInMillis is correctly set after deserialization
+            for (Timer timer : timerList) {
+                timer.setTimeLeftInMillis(timer.getTotalTimeInMillis());
+                timer.setRunning(false); // Ensure timers are not running when loaded
+            }
         }
 
         // Load current and total rounds
@@ -344,7 +372,7 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
         totalRounds = sharedPreferences.getInt(schemeName + "_" + TOTAL_ROUNDS_KEY, 10);
 
         // Update UI
-        timerAdapter.notifyDataSetChanged();
+        timerAdapter.setTimers(timerList); // Use the new setTimers method
         updateRoundDisplay();
         updateTotalDurationDisplay();
     }
@@ -352,5 +380,11 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
     private Set<String> getSavedSchemeNames() {
         SharedPreferences sharedPreferences = getSharedPreferences(SHARED_PREFS_SCHEMES, MODE_PRIVATE);
         return sharedPreferences.getStringSet(SCHEME_NAMES_KEY, new HashSet<>());
+    }
+
+    private void updateTitleBar() {
+        if (getSupportActionBar() != null) {
+            getSupportActionBar().setTitle(getString(R.string.app_name) + " - " + currentSchemeName);
+        }
     }
 }
