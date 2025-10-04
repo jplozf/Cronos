@@ -1,20 +1,29 @@
 package fr.ozf.cronos;
 
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.view.LayoutInflater;
+import android.widget.ArrayAdapter;
 import android.widget.EditText;
 import android.widget.Toast;
 import android.widget.Button;
 import android.widget.TextView;
+import android.widget.ListView;
 
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
+
+import java.lang.reflect.Type;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import fr.ozf.cronos.databinding.ActivityMainBinding;
@@ -25,6 +34,13 @@ import android.view.View;
 
 public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTimerClickListener, TimerAdapter.OnTimerFinishListener {
 
+    private static final String SHARED_PREFS = "sharedPrefs";
+    private static final String TIMER_LIST_KEY = "timerList";
+    private static final String CURRENT_ROUND_KEY = "currentRound";
+    private static final String TOTAL_ROUNDS_KEY = "totalRounds";
+    private static final String SHARED_PREFS_SCHEMES = "sharedPrefsSchemes";
+    private static final String SCHEME_NAMES_KEY = "schemeNames";
+
     private ActivityMainBinding binding;
     private TimerAdapter timerAdapter;
     private List<Timer> timerList;
@@ -32,6 +48,8 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
     private TextView totalDurationTextView;
     private int currentRound = 1;
     private int totalRounds = 10; // Default total rounds
+
+    private Gson gson = new Gson();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -44,6 +62,9 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
 
         roundDisplayTextView = findViewById(R.id.round_display_text_view);
         totalDurationTextView = findViewById(R.id.total_duration_text_view);
+
+        loadData(); // Load saved data
+
         updateRoundDisplay();
 
         roundDisplayTextView.setOnClickListener(v -> {
@@ -65,6 +86,7 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
                         }
                         updateRoundDisplay();
                         updateTotalDurationDisplay(); // Update total duration after changing total rounds
+                        saveData(); // Save data after changing total rounds
                         Toast.makeText(this, "Total rounds updated", Toast.LENGTH_SHORT).show();
                     } else {
                         Toast.makeText(this, "Total rounds must be greater than 0", Toast.LENGTH_SHORT).show();
@@ -77,10 +99,6 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
 
             builder.show();
         });
-
-        timerList = new ArrayList<>();
-        timerList.add(new Timer("Walk", 2 * 60 * 1000)); // 2 minutes
-        timerList.add(new Timer("Run", 3 * 60 * 1000)); // 3 minutes
 
         RecyclerView timerRecyclerView = findViewById(R.id.timer_list_recycler_view);
         timerRecyclerView.setLayoutManager(new LinearLayoutManager(this));
@@ -97,8 +115,15 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
                 timerAdapter.notifyItemInserted(newItemPosition);
                 timerRecyclerView.scrollToPosition(newItemPosition);
                 updateTotalDurationDisplay(); // Update total duration after adding a timer
+                saveData(); // Save data after adding a timer
             }
         });
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        saveData();
     }
 
     @Override
@@ -110,13 +135,15 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
 
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
-        // Handle action bar item clicks here. The action bar will
-        // automatically handle clicks on the Home/Up button, so long
-        // as you specify a parent activity in AndroidManifest.xml.
         int id = item.getItemId();
 
-        //noinspection SimplifiableIfStatement
         if (id == R.id.action_settings) {
+            return true;
+        } else if (id == R.id.action_save_scheme) {
+            showSaveSchemeDialog();
+            return true;
+        } else if (id == R.id.action_load_scheme) {
+            showLoadSchemeDialog();
             return true;
         }
 
@@ -155,6 +182,7 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
             timerAdapter.notifyItemChanged(position);
 
             updateTotalDurationDisplay(); // Update total duration after editing a timer
+            saveData(); // Save data after editing a timer
 
             Toast.makeText(this, "Timer updated", Toast.LENGTH_SHORT).show();
         });
@@ -168,6 +196,7 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
             timerAdapter.notifyItemRemoved(position);
             alertDialog.dismiss(); // Dismiss the created dialog
             updateTotalDurationDisplay(); // Update total duration after deleting a timer
+            saveData(); // Save data after deleting a timer
             Toast.makeText(this, "Timer deleted", Toast.LENGTH_SHORT).show();
         });
 
@@ -182,6 +211,7 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
             Toast.makeText(this, "All rounds completed!", Toast.LENGTH_LONG).show();
         }
         updateRoundDisplay();
+        saveData(); // Save data after a timer finishes
     }
 
     private void updateRoundDisplay() {
@@ -201,5 +231,126 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
 
         String formattedDuration = String.format(Locale.getDefault(), "Total Duration: %02d:%02d:%02d", hours, minutes, seconds);
         totalDurationTextView.setText(formattedDuration);
+    }
+
+    private void saveData() {
+        SharedPreferences sharedPreferences = getSharedPreferences(SHARED_PREFS, MODE_PRIVATE);
+        SharedPreferences.Editor editor = sharedPreferences.edit();
+
+        String json = gson.toJson(timerList);
+        editor.putString(TIMER_LIST_KEY, json);
+        editor.putInt(CURRENT_ROUND_KEY, currentRound);
+        editor.putInt(TOTAL_ROUNDS_KEY, totalRounds);
+        editor.apply();
+    }
+
+    private void loadData() {
+        SharedPreferences sharedPreferences = getSharedPreferences(SHARED_PREFS, MODE_PRIVATE);
+        String json = sharedPreferences.getString(TIMER_LIST_KEY, null);
+        Type type = new TypeToken<ArrayList<Timer>>() {}.getType();
+        timerList = gson.fromJson(json, type);
+
+        if (timerList == null) {
+            timerList = new ArrayList<>();
+        }
+
+        currentRound = sharedPreferences.getInt(CURRENT_ROUND_KEY, 1);
+        totalRounds = sharedPreferences.getInt(TOTAL_ROUNDS_KEY, 10);
+    }
+
+    private void showSaveSchemeDialog() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        LayoutInflater inflater = getLayoutInflater();
+        View dialogView = inflater.inflate(R.layout.dialog_save_scheme, null);
+        builder.setView(dialogView);
+
+        EditText editSchemeName = dialogView.findViewById(R.id.edit_scheme_name);
+
+        builder.setTitle("Save Scheme");
+        builder.setPositiveButton("Save", (dialog, which) -> {
+            String schemeName = editSchemeName.getText().toString().trim();
+            if (!schemeName.isEmpty()) {
+                saveScheme(schemeName);
+                Toast.makeText(this, "Scheme '" + schemeName + "' saved", Toast.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(this, "Scheme name cannot be empty", Toast.LENGTH_SHORT).show();
+            }
+        });
+        builder.setNegativeButton("Cancel", (dialog, which) -> dialog.cancel());
+        builder.show();
+    }
+
+    private void saveScheme(String schemeName) {
+        SharedPreferences sharedPreferences = getSharedPreferences(SHARED_PREFS_SCHEMES, MODE_PRIVATE);
+        SharedPreferences.Editor editor = sharedPreferences.edit();
+
+        // Save timer list
+        String timerListJson = gson.toJson(timerList);
+        editor.putString(schemeName + "_" + TIMER_LIST_KEY, timerListJson);
+
+        // Save current and total rounds
+        editor.putInt(schemeName + "_" + CURRENT_ROUND_KEY, currentRound);
+        editor.putInt(schemeName + "_" + TOTAL_ROUNDS_KEY, totalRounds);
+
+        // Save scheme name to a set of all scheme names
+        Set<String> schemeNames = sharedPreferences.getStringSet(SCHEME_NAMES_KEY, new HashSet<>());
+        schemeNames.add(schemeName);
+        editor.putStringSet(SCHEME_NAMES_KEY, schemeNames);
+
+        editor.apply();
+    }
+
+    private void showLoadSchemeDialog() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        LayoutInflater inflater = getLayoutInflater();
+        View dialogView = inflater.inflate(R.layout.dialog_load_scheme, null);
+        builder.setView(dialogView);
+
+        ListView schemeListView = dialogView.findViewById(R.id.scheme_list_view);
+        List<String> schemeNames = new ArrayList<>(getSavedSchemeNames());
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, schemeNames);
+        schemeListView.setAdapter(adapter);
+
+        schemeListView.setOnItemClickListener((parent, view, position, id) -> {
+            String selectedSchemeName = schemeNames.get(position);
+            loadScheme(selectedSchemeName);
+            Toast.makeText(this, "Scheme '" + selectedSchemeName + "' loaded", Toast.LENGTH_SHORT).show();
+            // Dismiss the dialog after loading
+            ((AlertDialog) parent.getTag()).dismiss();
+        });
+
+        builder.setTitle("Load Scheme");
+        builder.setNegativeButton("Cancel", (dialog, which) -> dialog.cancel());
+
+        AlertDialog alertDialog = builder.create();
+        schemeListView.setTag(alertDialog); // Store dialog in tag to dismiss it from item click listener
+        alertDialog.show();
+    }
+
+    private void loadScheme(String schemeName) {
+        SharedPreferences sharedPreferences = getSharedPreferences(SHARED_PREFS_SCHEMES, MODE_PRIVATE);
+
+        // Load timer list
+        String timerListJson = sharedPreferences.getString(schemeName + "_" + TIMER_LIST_KEY, null);
+        Type type = new TypeToken<ArrayList<Timer>>() {}.getType();
+        timerList = gson.fromJson(timerListJson, type);
+
+        if (timerList == null) {
+            timerList = new ArrayList<>();
+        }
+
+        // Load current and total rounds
+        currentRound = sharedPreferences.getInt(schemeName + "_" + CURRENT_ROUND_KEY, 1);
+        totalRounds = sharedPreferences.getInt(schemeName + "_" + TOTAL_ROUNDS_KEY, 10);
+
+        // Update UI
+        timerAdapter.notifyDataSetChanged();
+        updateRoundDisplay();
+        updateTotalDurationDisplay();
+    }
+
+    private Set<String> getSavedSchemeNames() {
+        SharedPreferences sharedPreferences = getSharedPreferences(SHARED_PREFS_SCHEMES, MODE_PRIVATE);
+        return sharedPreferences.getStringSet(SCHEME_NAMES_KEY, new HashSet<>());
     }
 }
