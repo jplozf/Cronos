@@ -15,6 +15,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.TimeUnit;
 
 import fr.ozf.cronos.databinding.ActivityMainBinding;
 
@@ -28,6 +29,7 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
     private TimerAdapter timerAdapter;
     private List<Timer> timerList;
     private TextView roundDisplayTextView;
+    private TextView totalDurationTextView;
     private int currentRound = 1;
     private int totalRounds = 10; // Default total rounds
 
@@ -41,6 +43,7 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
         setSupportActionBar(binding.toolbar);
 
         roundDisplayTextView = findViewById(R.id.round_display_text_view);
+        totalDurationTextView = findViewById(R.id.total_duration_text_view);
         updateRoundDisplay();
 
         roundDisplayTextView.setOnClickListener(v -> {
@@ -61,6 +64,7 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
                             currentRound = 1; // Reset current round if it exceeds new total
                         }
                         updateRoundDisplay();
+                        updateTotalDurationDisplay(); // Update total duration after changing total rounds
                         Toast.makeText(this, "Total rounds updated", Toast.LENGTH_SHORT).show();
                     } else {
                         Toast.makeText(this, "Total rounds must be greater than 0", Toast.LENGTH_SHORT).show();
@@ -83,6 +87,8 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
         timerAdapter = new TimerAdapter(timerList, this, this, this);
         timerRecyclerView.setAdapter(timerAdapter);
 
+        updateTotalDurationDisplay(); // Initial update of total duration
+
         binding.fab.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
@@ -90,6 +96,7 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
                 timerList.add(new Timer("New Timer", 1 * 60 * 1000)); // Default 1 minute timer
                 timerAdapter.notifyItemInserted(newItemPosition);
                 timerRecyclerView.scrollToPosition(newItemPosition);
+                updateTotalDurationDisplay(); // Update total duration after adding a timer
             }
         });
     }
@@ -147,6 +154,8 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
             timer.setRunning(false);
             timerAdapter.notifyItemChanged(position);
 
+            updateTotalDurationDisplay(); // Update total duration after editing a timer
+
             Toast.makeText(this, "Timer updated", Toast.LENGTH_SHORT).show();
         });
         builder.setNegativeButton("Cancel", (dialog, which) -> dialog.cancel());
@@ -158,6 +167,7 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
             timerList.remove(position);
             timerAdapter.notifyItemRemoved(position);
             alertDialog.dismiss(); // Dismiss the created dialog
+            updateTotalDurationDisplay(); // Update total duration after deleting a timer
             Toast.makeText(this, "Timer deleted", Toast.LENGTH_SHORT).show();
         });
 
@@ -176,5 +186,20 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
 
     private void updateRoundDisplay() {
         roundDisplayTextView.setText(String.format(Locale.getDefault(), "Round %d / %d", currentRound, totalRounds));
+    }
+
+    private void updateTotalDurationDisplay() {
+        long totalMillis = 0;
+        for (Timer timer : timerList) {
+            totalMillis += timer.getTotalTimeInMillis();
+        }
+        totalMillis *= totalRounds;
+
+        long hours = TimeUnit.MILLISECONDS.toHours(totalMillis);
+        long minutes = TimeUnit.MILLISECONDS.toMinutes(totalMillis) - TimeUnit.HOURS.toMinutes(hours);
+        long seconds = TimeUnit.MILLISECONDS.toSeconds(totalMillis) - TimeUnit.MINUTES.toSeconds(TimeUnit.MILLISECONDS.toMinutes(totalMillis));
+
+        String formattedDuration = String.format(Locale.getDefault(), "Total Duration: %02d:%02d:%02d", hours, minutes, seconds);
+        totalDurationTextView.setText(formattedDuration);
     }
 }
