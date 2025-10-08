@@ -22,6 +22,8 @@ import android.widget.TextView;
 import android.widget.Toast;
 import android.os.Handler;
 import android.os.Looper;
+import android.speech.tts.TextToSpeech; // Import TextToSpeech
+import android.widget.Switch; // Import Switch
 
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
@@ -71,6 +73,7 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
     private Gson gson = new Gson();
     private Handler handler = new Handler(Looper.getMainLooper());
     private Runnable timerRunnable;
+    private TextToSpeech textToSpeech; // Declare TextToSpeech object
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -125,6 +128,18 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
                 saveData();
             }
         });
+
+        // Initialize TextToSpeech
+        textToSpeech = new TextToSpeech(this, status -> {
+            if (status == TextToSpeech.SUCCESS) {
+                int result = textToSpeech.setLanguage(Locale.getDefault());
+                if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                    Log.e(TAG, "Language not supported or missing data");
+                }
+            } else {
+                Log.e(TAG, "TextToSpeech initialization failed");
+            }
+        });
     }
 
     @Override
@@ -138,6 +153,11 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
         super.onDestroy();
         // Stop any running timers and remove callbacks to prevent memory leaks
         handler.removeCallbacks(timerRunnable);
+        // Shutdown TextToSpeech
+        if (textToSpeech != null) {
+            textToSpeech.stop();
+            textToSpeech.shutdown();
+        }
     }
 
     @Override
@@ -209,6 +229,7 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
         EditText editSeconds = dialogView.findViewById(R.id.edit_timer_seconds);
         Button selectRingtoneButton = dialogView.findViewById(R.id.select_ringtone_button);
         TextView selectedRingtoneTextView = dialogView.findViewById(R.id.selected_ringtone_text_view);
+        Switch speakLabelSwitch = dialogView.findViewById(R.id.switch_speak_label); // Find the new switch
 
         editLabel.setText(timer.getLabel());
         long minutes = (timer.getTotalTimeInMillis() / 1000) / 60;
@@ -217,6 +238,21 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
         editSeconds.setText(String.valueOf(seconds));
 
         updateRingtoneTextView(selectedRingtoneTextView, timer.getRingtoneUri());
+
+        // Set initial state of the switch
+        speakLabelSwitch.setChecked(timer.getSpeakLabelOnStart());
+        // Enable/disable ringtone selection based on switch state
+        selectRingtoneButton.setEnabled(!timer.getSpeakLabelOnStart());
+
+        speakLabelSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            timer.setSpeakLabelOnStart(isChecked);
+            selectRingtoneButton.setEnabled(!isChecked);
+            if (isChecked) {
+                // If speaking is enabled, clear any custom ringtone to avoid confusion
+                timer.setRingtoneUri(null);
+                updateRingtoneTextView(selectedRingtoneTextView, null);
+            }
+        });
 
         selectRingtoneButton.setOnClickListener(v -> {
             editingTimerPosition = position;
@@ -337,6 +373,14 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
         currentTimerIndex = index;
         Log.d(TAG, "currentTimerIndex set to: " + currentTimerIndex);
 
+        // Speak the timer label if enabled
+        if (timerList.get(currentTimerIndex).getSpeakLabelOnStart()) {
+            if (textToSpeech != null && !textToSpeech.isSpeaking()) {
+                textToSpeech.speak(timerList.get(currentTimerIndex).getLabel(), TextToSpeech.QUEUE_FLUSH, null, null);
+                Log.d(TAG, "Speaking timer label at start: " + timerList.get(currentTimerIndex).getLabel());
+            }
+        }
+
         // Start the countdown runnable
         startCountdownRunnable();
         Log.d(TAG, "startCountdownRunnable called.");
@@ -433,7 +477,8 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
     }
     public void onTimerFinish(int position, Timer finishedTimer) {
         Log.d(TAG, "onTimerFinish called for position: " + position + ", timer label: " + finishedTimer.getLabel());
-        // Play notification sound
+
+        // Always play notification sound at the end of the timer
         Uri ringtoneUri = null;
         if (finishedTimer.getRingtoneUri() != null) {
             ringtoneUri = Uri.parse(finishedTimer.getRingtoneUri());

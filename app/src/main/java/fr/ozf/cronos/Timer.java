@@ -6,10 +6,12 @@ public class Timer {
     private long timeLeftInMillis;
     private boolean isRunning;
     private String ringtoneUri;
+    private boolean speakLabelOnStart; // Renamed field
 
     // No-argument constructor for Gson deserialization
     public Timer() {
         // Default values or leave for Gson to populate
+        this.speakLabelOnStart = false; // Default to false
     }
 
     public Timer(String label, long totalTimeInMillis) {
@@ -18,6 +20,7 @@ public class Timer {
         this.timeLeftInMillis = totalTimeInMillis;
         this.isRunning = false;
         this.ringtoneUri = null; // Default to no specific ringtone
+        this.speakLabelOnStart = false; // Default to false
     }
 
     public String getLabel() {
@@ -58,6 +61,15 @@ public class Timer {
 
     public void setRingtoneUri(String ringtoneUri) {
         this.ringtoneUri = ringtoneUri;
+    }
+
+    // New getter and setter for speakLabelOnStart
+    public boolean getSpeakLabelOnStart() {
+        return speakLabelOnStart;
+    }
+
+    public void setSpeakLabelOnStart(boolean speakLabelOnStart) {
+        this.speakLabelOnStart = speakLabelOnStart;
     }
 
     public void reset() {

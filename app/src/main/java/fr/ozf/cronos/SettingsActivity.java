@@ -61,6 +61,7 @@ public class SettingsActivity extends AppCompatActivity {
                     ringtone.play();
                 } catch (Exception e) {
                     // Handle exceptions, e.g., if the ringtone file is not accessible
+                    e.printStackTrace(); // Log the exception for debugging
                 }
             }
         }

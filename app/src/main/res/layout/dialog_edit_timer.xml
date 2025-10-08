@@ -39,6 +39,13 @@
         android:text="Ringtone: Default"
         android:layout_marginTop="8dp"/>
 
+    <Switch
+        android:id="@+id/switch_speak_label"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="Speak timer label on start" />
+
     <Button
         android:id="@+id/delete_timer_button"
         android:layout_width="wrap_content"
