@@ -1,15 +1,29 @@
 package fr.ozf.cronos;
 
+import android.app.Activity;
+import android.content.Intent;
 import android.content.SharedPreferences;
+import android.media.MediaPlayer;
+import android.media.Ringtone;
+import android.media.RingtoneManager;
+import android.net.Uri;
 import android.os.Bundle;
+import android.provider.Settings;
+import android.util.Log;
 import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuItem;
+import android.view.View;
 import android.widget.ArrayAdapter;
-import android.widget.EditText;
-import android.widget.Toast;
 import android.widget.Button;
-import android.widget.TextView;
+import android.widget.EditText;
 import android.widget.ListView;
+import android.widget.TextView;
+import android.widget.Toast;
+import android.os.Handler;
+import android.os.Looper;
 
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -28,20 +42,20 @@ import java.util.concurrent.TimeUnit;
 
 import fr.ozf.cronos.databinding.ActivityMainBinding;
 
-import android.util.Log;
-import android.view.Menu;
-import android.view.MenuItem;
-import android.view.View;
-
 public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTimerClickListener, TimerAdapter.OnTimerFinishListener {
 
     private static final String SHARED_PREFS = "sharedPrefs";
     private static final String TIMER_LIST_KEY = "timerList";
     private static final String CURRENT_ROUND_KEY = "currentRound";
     private static final String TOTAL_ROUNDS_KEY = "totalRounds";
+    private static final String CURRENT_TIMER_INDEX_KEY = "currentTimerIndex"; // Key for saving current timer index
     private static final String SHARED_PREFS_SCHEMES = "sharedPrefsSchemes";
     private static final String SCHEME_NAMES_KEY = "schemeNames";
     private static final String CURRENT_SCHEME_NAME_KEY = "currentSchemeName";
+    private static final String DEFAULT_RINGTONE_URI_KEY = "defaultRingtoneUri";
+    private static final int RINGTONE_PICKER_REQUEST_CODE = 2; // Different from SettingsActivity's request code
+
+    private static final String TAG = "MainActivity"; // Tag for logging
 
     private ActivityMainBinding binding;
     private TimerAdapter timerAdapter;
@@ -50,9 +64,13 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
     private TextView totalDurationTextView;
     private int currentRound = 1;
     private int totalRounds = 10; // Default total rounds
+    private int currentTimerIndex = 0; // Index of the timer currently running or to be started next
     private String currentSchemeName = "Default";
+    private int editingTimerPosition = -1; // To keep track of which timer is being edited
 
     private Gson gson = new Gson();
+    private Handler handler = new Handler(Looper.getMainLooper());
+    private Runnable timerRunnable;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -68,58 +86,43 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
 
         loadData(); // Load saved data
 
-        updateRoundDisplay();
-        updateTitleBar(); // Initial update of the title bar
+        // Initialize timer list if null
+        if (timerList == null) {
+            timerList = new ArrayList<>();
+        }
 
-        roundDisplayTextView.setOnClickListener(v -> {
-            AlertDialog.Builder builder = new AlertDialog.Builder(this);
-            builder.setTitle("Set Total Rounds");
-
-            final EditText input = new EditText(this);
-            input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
-            input.setText(String.valueOf(totalRounds));
-            builder.setView(input);
-
-            builder.setPositiveButton("OK", (dialog, which) -> {
-                try {
-                    int newTotalRounds = Integer.parseInt(input.getText().toString());
-                    if (newTotalRounds > 0) {
-                        totalRounds = newTotalRounds;
-                        if (currentRound > totalRounds) {
-                            currentRound = 1; // Reset current round if it exceeds new total
-                        }
-                        updateRoundDisplay();
-                        updateTotalDurationDisplay(); // Update total duration after changing total rounds
-                        saveData(); // Save data after changing total rounds
-                        Toast.makeText(this, "Total rounds updated", Toast.LENGTH_SHORT).show();
-                    } else {
-                        Toast.makeText(this, "Total rounds must be greater than 0", Toast.LENGTH_SHORT).show();
-                    }
-                } catch (NumberFormatException e) {
-                    Toast.makeText(this, "Invalid number for total rounds", Toast.LENGTH_SHORT).show();
-                }
-            });
-            builder.setNegativeButton("Cancel", (dialog, which) -> dialog.cancel());
-
-            builder.show();
-        });
-
+        // Initialize adapter
+        timerAdapter = new TimerAdapter(timerList, this, this, this);
         RecyclerView timerRecyclerView = findViewById(R.id.timer_list_recycler_view);
         timerRecyclerView.setLayoutManager(new LinearLayoutManager(this));
-        timerAdapter = new TimerAdapter(timerList, this, this, this);
         timerRecyclerView.setAdapter(timerAdapter);
 
-        updateTotalDurationDisplay(); // Initial update of total duration
+        // Set initial state based on loaded data or defaults
+        if (!timerList.isEmpty()) {
+            // If timers exist, reset them and set initial index
+            resetSession(); // This will set currentRound=1, currentTimerIndex=0, and reset all timers
+            // Ensure the display reflects the loaded state
+            updateRoundDisplay();
+            updateTotalDurationDisplay();
+        } else {
+            // If no timers, use default values
+            currentRound = 1;
+            totalRounds = 10;
+            currentTimerIndex = 0;
+            updateRoundDisplay();
+            updateTotalDurationDisplay();
+        }
+
+        roundDisplayTextView.setOnClickListener(v -> showSetTotalRoundsDialog());
+
+        updateTitleBar(); // Initial update of the title bar
 
         binding.fab.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                int newItemPosition = timerList.size();
-                timerList.add(new Timer("New Timer", 1 * 60 * 1000)); // Default 1 minute timer
-                timerAdapter.notifyItemInserted(newItemPosition);
-                timerRecyclerView.scrollToPosition(newItemPosition);
-                updateTotalDurationDisplay(); // Update total duration after adding a timer
-                saveData(); // Save data after adding a timer
+                // FAB is now ONLY for adding new timers
+                addDefaultTimer();
+                saveData();
             }
         });
     }
@@ -131,8 +134,14 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
     }
 
     @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        // Stop any running timers and remove callbacks to prevent memory leaks
+        handler.removeCallbacks(timerRunnable);
+    }
+
+    @Override
     public boolean onCreateOptionsMenu(Menu menu) {
-        // Inflate the menu; this adds items to the action bar if it is present.
         getMenuInflater().inflate(R.menu.menu_main, menu);
         return true;
     }
@@ -142,6 +151,8 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
         int id = item.getItemId();
 
         if (id == R.id.action_settings) {
+            Intent intent = new Intent(this, SettingsActivity.class);
+            startActivity(intent);
             return true;
         } else if (id == R.id.action_save_scheme) {
             showSaveSchemeDialog();
@@ -154,8 +165,40 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
         return super.onOptionsItemSelected(item);
     }
 
-    @Override
-    public void onTimerClick(int position, Timer timer) {
+    // Method to show the dialog for setting total rounds
+    private void showSetTotalRoundsDialog() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Set Total Rounds");
+
+        final EditText input = new EditText(this);
+        input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        input.setText(String.valueOf(totalRounds));
+        builder.setView(input);
+
+        builder.setPositiveButton("OK", (dialog, which) -> {
+            try {
+                int newTotalRounds = Integer.parseInt(input.getText().toString());
+                if (newTotalRounds > 0) {
+                    totalRounds = newTotalRounds;
+                    if (currentRound > totalRounds) {
+                        currentRound = 1; // Reset current round if it exceeds new total
+                    }
+                    updateRoundDisplay();
+                    updateTotalDurationDisplay(); // Update total duration after changing total rounds
+                    saveData(); // Save data after changing total rounds
+                    Toast.makeText(this, "Total rounds updated", Toast.LENGTH_SHORT).show();
+                } else {
+                    Toast.makeText(this, "Total rounds must be greater than 0", Toast.LENGTH_SHORT).show();
+                }
+            } catch (NumberFormatException e) {
+                Toast.makeText(this, "Invalid number for total rounds", Toast.LENGTH_SHORT).show();
+            }
+        });
+        builder.setNegativeButton("Cancel", (dialog, which) -> dialog.cancel());
+        builder.show();
+    }
+
+    private void showEditTimerDialog(int position, Timer timer) {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         LayoutInflater inflater = getLayoutInflater();
         View dialogView = inflater.inflate(R.layout.dialog_edit_timer, null);
@@ -164,12 +207,26 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
         EditText editLabel = dialogView.findViewById(R.id.edit_timer_label);
         EditText editMinutes = dialogView.findViewById(R.id.edit_timer_minutes);
         EditText editSeconds = dialogView.findViewById(R.id.edit_timer_seconds);
+        Button selectRingtoneButton = dialogView.findViewById(R.id.select_ringtone_button);
+        TextView selectedRingtoneTextView = dialogView.findViewById(R.id.selected_ringtone_text_view);
 
         editLabel.setText(timer.getLabel());
         long minutes = (timer.getTotalTimeInMillis() / 1000) / 60;
         long seconds = (timer.getTotalTimeInMillis() / 1000) % 60;
         editMinutes.setText(String.valueOf(minutes));
         editSeconds.setText(String.valueOf(seconds));
+
+        updateRingtoneTextView(selectedRingtoneTextView, timer.getRingtoneUri());
+
+        selectRingtoneButton.setOnClickListener(v -> {
+            editingTimerPosition = position;
+            Intent intent = new Intent(RingtoneManager.ACTION_RINGTONE_PICKER);
+            intent.putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_NOTIFICATION);
+            intent.putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Select Timer Sound");
+            Uri currentUri = timer.getRingtoneUri() != null ? Uri.parse(timer.getRingtoneUri()) : Settings.System.DEFAULT_NOTIFICATION_URI;
+            intent.putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, currentUri);
+            startActivityForResult(intent, RINGTONE_PICKER_REQUEST_CODE);
+        });
 
         builder.setTitle("Edit Timer");
         builder.setPositiveButton("Save", (dialog, which) -> {
@@ -181,46 +238,303 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
 
             timer.setLabel(newLabel);
             timer.setTotalTimeInMillis(newTotalTimeInMillis);
+            // When editing, reset the timer to its full duration and stop it.
             timer.setTimeLeftInMillis(newTotalTimeInMillis);
             timer.setRunning(false);
             timerAdapter.notifyItemChanged(position);
 
-            updateTotalDurationDisplay(); // Update total duration after editing a timer
-            saveData(); // Save data after editing a timer
-
+            updateTotalDurationDisplay();
+            saveData();
             Toast.makeText(this, "Timer updated", Toast.LENGTH_SHORT).show();
         });
         builder.setNegativeButton("Cancel", (dialog, which) -> dialog.cancel());
 
         // Handle delete button
         Button deleteButton = dialogView.findViewById(R.id.delete_timer_button);
-        AlertDialog alertDialog = builder.create(); // Create the dialog here
+        AlertDialog alertDialog = builder.create();
         deleteButton.setOnClickListener(v -> {
             timerList.remove(position);
             timerAdapter.notifyItemRemoved(position);
-            alertDialog.dismiss(); // Dismiss the created dialog
-            updateTotalDurationDisplay(); // Update total duration after deleting a timer
-            saveData(); // Save data after deleting a timer
+            alertDialog.dismiss();
+            updateTotalDurationDisplay();
+            saveData();
             Toast.makeText(this, "Timer deleted", Toast.LENGTH_SHORT).show();
+            // If the deleted timer was the current active timer, reset the session or start the next one.
+            if (position == currentTimerIndex) {
+                resetSession(); // Simplest approach: reset the whole session
+            }
         });
 
-        alertDialog.show(); // Show the created dialog
+        alertDialog.show();
+    }
+
+    // Method to add a default timer
+    private void addDefaultTimer() {
+        int newItemPosition = timerList.size();
+        timerList.add(new Timer("New Timer", 1 * 60 * 1000)); // Default 1 minute timer
+        timerAdapter.notifyItemInserted(newItemPosition);
+        RecyclerView timerRecyclerView = findViewById(R.id.timer_list_recycler_view);
+        timerRecyclerView.scrollToPosition(newItemPosition);
+        updateTotalDurationDisplay();
+        saveData();
+        Toast.makeText(this, "Timer added", Toast.LENGTH_SHORT).show();
+    }
+
+    // Method to reset the entire session
+    private void resetSession() {
+        Log.d(TAG, "resetSession called.");
+        // Stop all timers and remove callbacks
+        handler.removeCallbacks(timerRunnable);
+        for (int i = 0; i < timerList.size(); i++) {
+            Timer timer = timerList.get(i);
+            if (timer.isRunning()) {
+                Log.d(TAG, "Stopping timer at index " + i + " during resetSession.");
+                timer.setRunning(false);
+                timer.setTimeLeftInMillis(timer.getTotalTimeInMillis()); // Reset time
+                timerAdapter.notifyItemChanged(i); // Update UI for the stopped timer
+            } else {
+                // Also reset time for timers that were not running
+                timer.setTimeLeftInMillis(timer.getTotalTimeInMillis());
+            }
+        }
+        currentRound = 1;
+        currentTimerIndex = 0;
+        updateRoundDisplay();
+        timerAdapter.notifyDataSetChanged(); // Refresh all timers' UI
+        Log.d(TAG, "resetSession finished. Current round: " + currentRound + ", Current timer index: " + currentTimerIndex);
+    }
+
+    // Method to start a specific timer by index and its countdown
+    private void startTimerAtIndex(int index) {
+        Log.d(TAG, "startTimerAtIndex called for index: " + index);
+        if (timerList.isEmpty() || index < 0 || index >= timerList.size()) {
+            Log.w(TAG, "startTimerAtIndex: Invalid index or empty timer list.");
+            return; // No timers or invalid index
+        }
+
+        // --- Ensure only the target timer is marked as running --- 
+        // This loop explicitly sets the running state for all timers.
+        handler.removeCallbacks(timerRunnable); // Stop any pending countdowns
+        Log.d(TAG, "Handler callbacks removed in startTimerAtIndex.");
+
+        for (int i = 0; i < timerList.size(); i++) {
+            Timer timer = timerList.get(i);
+            if (i == index) {
+                // This is the timer we want to start
+                timer.setRunning(true); // Explicitly set to true
+                Log.d(TAG, "Timer at index " + index + " marked as running. Label: " + timer.getLabel());
+            } else {
+                // This is another timer, ensure it's stopped and reset
+                timer.setRunning(false); // Explicitly set to false
+                timer.setTimeLeftInMillis(timer.getTotalTimeInMillis()); // Revert to preset time
+                Log.d(TAG, "Timer at index " + i + " marked as not running and reset.");
+            }
+            timerAdapter.notifyItemChanged(i); // Update UI for all timers
+        }
+        // --- End of state setting --- 
+
+        // Update the current timer index
+        currentTimerIndex = index;
+        Log.d(TAG, "currentTimerIndex set to: " + currentTimerIndex);
+
+        // Start the countdown runnable
+        startCountdownRunnable();
+        Log.d(TAG, "startCountdownRunnable called.");
+    }
+
+    // Method to start the countdown runnable
+    private void startCountdownRunnable() {
+        Log.d(TAG, "startCountdownRunnable called.");
+        if (timerRunnable == null) {
+            timerRunnable = new Runnable() {
+                @Override
+                public void run() {
+                    Log.d(TAG, "TimerRunnable executing.");
+                    // Find the currently running timer
+                    Timer runningTimer = null;
+                    int runningTimerPosition = -1;
+                    for (int i = 0; i < timerList.size(); i++) {
+                        if (timerList.get(i).isRunning()) { // <-- This check ensures only one timer is processed
+                            runningTimer = timerList.get(i);
+                            runningTimerPosition = i;
+                            Log.d(TAG, "startCountdownRunnable found running timer at index: " + i + " with label: " + runningTimer.getLabel());
+                            break; // <-- This break is crucial. It stops after finding the first one.
+                        }
+                    }
+
+                    if (runningTimer != null) {
+                        runningTimer.setTimeLeftInMillis(runningTimer.getTimeLeftInMillis() - 1000); // Decrement by 1 second
+
+                        if (runningTimer.getTimeLeftInMillis() <= 0) {
+                            runningTimer.setTimeLeftInMillis(0);
+                            runningTimer.setRunning(false);
+                            Log.d(TAG, "Timer at index " + runningTimerPosition + " finished.");
+                            // Call onTimerFinish here, passing the position and the timer object
+                            onTimerFinish(runningTimerPosition, runningTimer);
+                        } else {
+                            // Update the UI for the running timer
+                            timerAdapter.notifyItemChanged(runningTimerPosition);
+                            // Schedule the next tick
+                            handler.postDelayed(this, 1000);
+                            Log.d(TAG, "Scheduled next tick for timer at " + runningTimerPosition);
+                        }
+                    } else {
+                        // No timer is running, stop the runnable
+                        handler.removeCallbacks(this);
+                        Log.d(TAG, "No running timer found. Stopped runnable.");
+                    }
+                }
+            };
+        }
+        handler.postDelayed(timerRunnable, 1000);
+        Log.d(TAG, "TimerRunnable scheduled for 1000ms.");
     }
 
     @Override
-    public void onTimerFinish(int position, Timer timer) {
-        currentRound++;
-        if (currentRound > totalRounds) {
-            currentRound = 1; // Reset or handle completion of all rounds
-            Toast.makeText(this, "All rounds completed!", Toast.LENGTH_LONG).show();
+    public void onTimerStartStop(int position, Timer timer) {
+        Log.d(TAG, "onTimerStartStop called for position: " + position + ", timer label: " + timer.getLabel());
+        if (timer.isRunning()) {
+            // If the clicked timer is running, stop it.
+            handler.removeCallbacks(timerRunnable);
+            timer.setRunning(false);
+            timer.setTimeLeftInMillis(timer.getTotalTimeInMillis()); // Reset time
+            timerAdapter.notifyItemChanged(position);
+            Log.d(TAG, "Timer at position " + position + " stopped.");
+        } else {
+            // If the clicked timer is not running, start it.
+            startTimerAtIndex(position);
+            Log.d(TAG, "Timer at position " + position + " started.");
         }
-        updateRoundDisplay();
-        saveData(); // Save data after a timer finishes
+        saveData(); // Save state after interaction
+    }
+
+    public void onTimerClick(int position, Timer timer) {
+        Log.d(TAG, "onTimerClick (for editing) called for position: " + position);
+        // When a timer item is clicked (not the start/stop button), open the edit dialog.
+        // First, ensure no timer is running to prevent unexpected behavior during editing.
+        boolean isSessionActive = false;
+        for (Timer t : timerList) {
+            if (t.isRunning()) {
+                isSessionActive = true;
+                break;
+            }
+            // Also reset any timers that were running but are now stopped (e.g., due to app restart)
+            t.setTimeLeftInMillis(t.getTotalTimeInMillis());
+            t.setRunning(false);
+        }
+
+        if (isSessionActive) {
+            Log.d(TAG, "Session active. Resetting session to allow editing timer at " + position);
+            resetSession(); // Resetting the session is the safest way to ensure no timer is running.
+            Toast.makeText(this, "Session reset to allow editing", Toast.LENGTH_SHORT).show();
+        }
+        showEditTimerDialog(position, timer);
+        saveData(); // Save state after interaction
+    }
+    public void onTimerFinish(int position, Timer finishedTimer) {
+        Log.d(TAG, "onTimerFinish called for position: " + position + ", timer label: " + finishedTimer.getLabel());
+        // Play notification sound
+        Uri ringtoneUri = null;
+        if (finishedTimer.getRingtoneUri() != null) {
+            ringtoneUri = Uri.parse(finishedTimer.getRingtoneUri());
+        } else {
+            SharedPreferences sharedPreferences = getSharedPreferences(SHARED_PREFS, MODE_PRIVATE);
+            String defaultRingtoneUriString = sharedPreferences.getString(DEFAULT_RINGTONE_URI_KEY, null);
+            if (defaultRingtoneUriString != null) {
+                ringtoneUri = Uri.parse(defaultRingtoneUriString);
+            } else {
+                ringtoneUri = Settings.System.DEFAULT_NOTIFICATION_URI;
+            }
+        }
+
+        try {
+            MediaPlayer mediaPlayer = new MediaPlayer();
+            mediaPlayer.setDataSource(this, ringtoneUri);
+            mediaPlayer.prepare();
+            mediaPlayer.start();
+            mediaPlayer.setOnCompletionListener(mp -> mp.release());
+        } catch (Exception e) {
+            Log.e(TAG, "Error playing ringtone", e);
+            // Fallback to default sound if custom ringtone fails
+            MediaPlayer mediaPlayer = MediaPlayer.create(this, R.raw.notification_sound);
+            if (mediaPlayer != null) {
+                mediaPlayer.start();
+                mediaPlayer.setOnCompletionListener(mp -> mp.release());
+            }
+        }
+
+        // Mark the finished timer as not running and reset its time
+        finishedTimer.setRunning(false);
+        finishedTimer.setTimeLeftInMillis(finishedTimer.getTotalTimeInMillis());
+        timerAdapter.notifyItemChanged(position);
+
+        // Move to the next timer or next round
+        if (currentTimerIndex < timerList.size() - 1) {
+            // Start the next timer in the list
+            currentTimerIndex++;
+            startTimerAtIndex(currentTimerIndex);
+            Log.d(TAG, "Moving to next timer at index: " + currentTimerIndex);
+        } else {
+            // All timers in the current round are finished
+            if (currentRound < totalRounds) {
+                // Advance to the next round
+                currentRound++;
+                currentTimerIndex = 0; // Reset to the first timer for the new round
+                updateRoundDisplay();
+                // Start the first timer of the new round
+                startTimerAtIndex(currentTimerIndex);
+                Log.d(TAG, "Moving to next round: " + currentRound + ", starting timer at index: " + currentTimerIndex);
+            } else {
+                // All rounds and all timers are finished
+                Log.d(TAG, "All rounds and timers finished.");
+                resetSession(); // Reset the session to initial state
+                Toast.makeText(this, "All rounds completed!", Toast.LENGTH_LONG).show();
+            }
+        }
+        saveData(); // Save state after interaction
+    }
+
+    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == RINGTONE_PICKER_REQUEST_CODE && resultCode == Activity.RESULT_OK) {
+            if (data != null && editingTimerPosition != -1) {
+                Uri uri = data.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI);
+                Timer timer = timerList.get(editingTimerPosition);
+                if (uri != null) {
+                    timer.setRingtoneUri(uri.toString());
+
+                    // Play a preview of the selected ringtone
+                    try {
+                        Ringtone ringtone = RingtoneManager.getRingtone(this, uri);
+                        ringtone.play();
+                    } catch (Exception e) {
+                        // Handle exceptions
+                    }
+                } else {
+                    timer.setRingtoneUri(null); // Allow setting back to default
+                }
+                timerAdapter.notifyItemChanged(editingTimerPosition);
+                saveData();
+                editingTimerPosition = -1; // Reset position
+            }
+        }
+    }
+
+    private void updateRingtoneTextView(TextView textView, String ringtoneUriString) {
+        if (ringtoneUriString != null) {
+            Uri ringtoneUri = Uri.parse(ringtoneUriString);
+            Ringtone ringtone = RingtoneManager.getRingtone(this, ringtoneUri);
+            String ringtoneName = ringtone.getTitle(this);
+            textView.setText("Ringtone: " + ringtoneName);
+        } else {
+            textView.setText("Ringtone: Default");
+        }
     }
 
     private void updateRoundDisplay() {
         roundDisplayTextView.setText(String.format(Locale.getDefault(), "Round %d / %d", currentRound, totalRounds));
     }
+
 
     private void updateTotalDurationDisplay() {
         long totalMillis = 0;
@@ -245,6 +559,7 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
         editor.putString(TIMER_LIST_KEY, json);
         editor.putInt(CURRENT_ROUND_KEY, currentRound);
         editor.putInt(TOTAL_ROUNDS_KEY, totalRounds);
+        editor.putInt(CURRENT_TIMER_INDEX_KEY, currentTimerIndex); // Save current timer index
         editor.putString(CURRENT_SCHEME_NAME_KEY, currentSchemeName); // Save current scheme name
         editor.apply();
     }
@@ -255,13 +570,20 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
         Type type = new TypeToken<ArrayList<Timer>>() {}.getType();
         timerList = gson.fromJson(json, type);
 
-        if (timerList == null) {
-            timerList = new ArrayList<>();
-        }
-
         currentRound = sharedPreferences.getInt(CURRENT_ROUND_KEY, 1);
         totalRounds = sharedPreferences.getInt(TOTAL_ROUNDS_KEY, 10);
+        currentTimerIndex = sharedPreferences.getInt(CURRENT_TIMER_INDEX_KEY, 0); // Load current timer index
         currentSchemeName = sharedPreferences.getString(CURRENT_SCHEME_NAME_KEY, "Default"); // Load current scheme name
+
+        if (timerList != null) {
+            // Ensure timeLeftInMillis is correctly set after deserialization and timers are not running
+            for (Timer timer : timerList) {
+                timer.setTimeLeftInMillis(timer.getTotalTimeInMillis());
+                timer.setRunning(false);
+            }
+        } else {
+            timerList = new ArrayList<>(); // Initialize if null
+        }
     }
 
     private void showSaveSchemeDialog() {
@@ -293,12 +615,6 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
         SharedPreferences sharedPreferences = getSharedPreferences(SHARED_PREFS_SCHEMES, MODE_PRIVATE);
         SharedPreferences.Editor editor = sharedPreferences.edit();
 
-        // Log timer details before saving
-        Log.d("SaveScheme", "Saving scheme: " + schemeName);
-        for (int i = 0; i < timerList.size(); i++) {
-            Log.d("SaveScheme", "Timer " + i + ": label=" + timerList.get(i).getLabel() + ", totalTimeInMillis=" + timerList.get(i).getTotalTimeInMillis());
-        }
-
         // Save timer list
         String timerListJson = gson.toJson(timerList);
         editor.putString(schemeName + "_" + TIMER_LIST_KEY, timerListJson);
@@ -306,6 +622,7 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
         // Save current and total rounds
         editor.putInt(schemeName + "_" + CURRENT_ROUND_KEY, currentRound);
         editor.putInt(schemeName + "_" + TOTAL_ROUNDS_KEY, totalRounds);
+        editor.putInt(schemeName + "_" + CURRENT_TIMER_INDEX_KEY, currentTimerIndex); // Save current timer index
 
         // Save scheme name to a set of all scheme names
         Set<String> schemeNames = sharedPreferences.getStringSet(SCHEME_NAMES_KEY, new HashSet<>());
@@ -352,27 +669,23 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
         Type type = new TypeToken<ArrayList<Timer>>() {}.getType();
         timerList = gson.fromJson(timerListJson, type);
 
-        if (timerList == null) {
-            timerList = new ArrayList<>();
-        } else {
-            // Log timer details after loading
-            Log.d("LoadScheme", "Loaded scheme: " + schemeName);
-            for (int i = 0; i < timerList.size(); i++) {
-                Log.d("LoadScheme", "Timer " + i + ": label=" + timerList.get(i).getLabel() + ", totalTimeInMillis=" + timerList.get(i).getTotalTimeInMillis());
-            }
-            // Ensure timeLeftInMillis is correctly set after deserialization
-            for (Timer timer : timerList) {
-                timer.setTimeLeftInMillis(timer.getTotalTimeInMillis());
-                timer.setRunning(false); // Ensure timers are not running when loaded
-            }
-        }
-
         // Load current and total rounds
         currentRound = sharedPreferences.getInt(schemeName + "_" + CURRENT_ROUND_KEY, 1);
         totalRounds = sharedPreferences.getInt(schemeName + "_" + TOTAL_ROUNDS_KEY, 10);
+        currentTimerIndex = sharedPreferences.getInt(schemeName + "_" + CURRENT_TIMER_INDEX_KEY, 0); // Load current timer index
+
+        if (timerList != null) {
+            // Ensure timeLeftInMillis is correctly set after deserialization and timers are not running
+            for (Timer timer : timerList) {
+                timer.setTimeLeftInMillis(timer.getTotalTimeInMillis());
+                timer.setRunning(false);
+            }
+        } else {
+            timerList = new ArrayList<>(); // Initialize if null
+        }
 
         // Update UI
-        timerAdapter.setTimers(timerList); // Use the new setTimers method
+        timerAdapter.setTimers(timerList); // Assuming TimerAdapter has a setTimers method
         updateRoundDisplay();
         updateTotalDurationDisplay();
     }
