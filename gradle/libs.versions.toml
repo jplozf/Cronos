@@ -8,8 +8,12 @@ material = "1.13.0"
 constraintlayout = "2.2.1"
 navigationFragment = "2.6.0"
 navigationUi = "2.6.0"
+play-services-maps = "18.2.0"
+play-services-location = "21.3.0"
 
 [libraries]
+play-services-maps = { group = "com.google.android.gms", name = "play-services-maps", version.ref = "play-services-maps" }
+play-services-location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "play-services-location" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
 espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }

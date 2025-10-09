@@ -19,7 +19,6 @@ public class TimerAdapter extends RecyclerView.Adapter<TimerAdapter.TimerViewHol
 
     public interface OnTimerClickListener {
         void onTimerClick(int position, Timer timer);
-        void onTimerStartStop(int position, Timer timer);
     }
 
     public interface OnTimerFinishListener {
@@ -30,6 +29,12 @@ public class TimerAdapter extends RecyclerView.Adapter<TimerAdapter.TimerViewHol
     private OnTimerClickListener clickListener;
     private OnTimerFinishListener finishListener;
     private Context context;
+    private int runningTimerPosition = -1;
+
+    public void setRunningTimerPosition(int position) {
+        this.runningTimerPosition = position;
+        notifyDataSetChanged();
+    }
 
     public TimerAdapter(List<Timer> timerList, OnTimerClickListener clickListener, OnTimerFinishListener finishListener, Context context) {
         this.timerList = timerList;
@@ -53,6 +58,12 @@ public class TimerAdapter extends RecyclerView.Adapter<TimerAdapter.TimerViewHol
         public void onBindViewHolder(@NonNull TimerViewHolder holder, int position) {
             Timer timer = timerList.get(position);
             holder.bind(timer, position);
+
+            if (position == runningTimerPosition) {
+                holder.timerItemLayout.setBackgroundColor(context.getResources().getColor(android.R.color.holo_blue_light));
+            } else {
+                holder.timerItemLayout.setBackgroundColor(context.getResources().getColor(android.R.color.darker_gray));
+            }
         }
     
         @Override
@@ -63,7 +74,7 @@ public class TimerAdapter extends RecyclerView.Adapter<TimerAdapter.TimerViewHol
     public class TimerViewHolder extends RecyclerView.ViewHolder implements View.OnClickListener {
                 TextView timerLabel;
                 TextView timerTime;
-                Button timerButton;
+                View timerItemLayout;
                 private int position;
                 private Timer timer; // Add this line
         
@@ -71,22 +82,16 @@ public class TimerAdapter extends RecyclerView.Adapter<TimerAdapter.TimerViewHol
                             super(itemView);
                             timerLabel = itemView.findViewById(R.id.timer_label);
                             timerTime = itemView.findViewById(R.id.timer_time);
-                            timerButton = itemView.findViewById(R.id.timer_button);
+                            timerItemLayout = itemView.findViewById(R.id.timer_item_layout);
                             itemView.setOnClickListener(this);
                         }
         
                         public void bind(Timer timer, int position) {
                             this.position = position;
                             this.timer = timer; // Add this line
-                            timerLabel.setText(timer.getLabel());                    updateTimerText(timer);
-                    updateButtonState(timer);
-    
-                    timerButton.setOnClickListener(v -> {
-                        if (clickListener != null) {
-                            clickListener.onTimerStartStop(position, timer);
+                            timerLabel.setText(timer.getLabel());
+                            updateTimerText(timer);
                         }
-                    });
-                }
     
                 @Override
                 public void onClick(View v) {
@@ -99,13 +104,5 @@ public class TimerAdapter extends RecyclerView.Adapter<TimerAdapter.TimerViewHol
                     int minutes = (int) (timer.getTimeLeftInMillis() / 1000) / 60;
                     int seconds = (int) (timer.getTimeLeftInMillis() / 1000) % 60;
                     timerTime.setText(String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds));
-                }
-    
-                public void updateButtonState(Timer timer) {
-                    if (timer.isRunning()) {
-                        timerButton.setText("Stop");
-                    } else {
-                        timerButton.setText("Start");
-                    }
                 }
             }}

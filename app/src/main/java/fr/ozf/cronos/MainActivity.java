@@ -24,13 +24,27 @@ import android.os.Handler;
 import android.os.Looper;
 import android.speech.tts.TextToSpeech; // Import TextToSpeech
 import android.widget.Switch; // Import Switch
+import android.content.pm.PackageManager;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.google.android.gms.location.FusedLocationProviderClient;
+import com.google.android.gms.location.LocationCallback;
+import com.google.android.gms.location.LocationRequest;
+import com.google.android.gms.location.LocationResult;
+import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.maps.CameraUpdateFactory;
+import com.google.android.gms.maps.GoogleMap;
+import com.google.android.gms.maps.MapView;
+import com.google.android.gms.maps.OnMapReadyCallback;
+import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.Polyline;
+import com.google.android.gms.maps.model.PolylineOptions;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
@@ -44,7 +58,7 @@ import java.util.concurrent.TimeUnit;
 
 import fr.ozf.cronos.databinding.ActivityMainBinding;
 
-public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTimerClickListener, TimerAdapter.OnTimerFinishListener {
+public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTimerClickListener, TimerAdapter.OnTimerFinishListener, OnMapReadyCallback {
 
     private static final String SHARED_PREFS = "sharedPrefs";
     private static final String TIMER_LIST_KEY = "timerList";
@@ -56,6 +70,8 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
     private static final String CURRENT_SCHEME_NAME_KEY = "currentSchemeName";
     private static final String DEFAULT_RINGTONE_URI_KEY = "defaultRingtoneUri";
     private static final int RINGTONE_PICKER_REQUEST_CODE = 2; // Different from SettingsActivity's request code
+    private static final int LOCATION_PERMISSION_REQUEST_CODE = 1;
+
 
     private static final String TAG = "MainActivity"; // Tag for logging
 
@@ -74,6 +90,14 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
     private Handler handler = new Handler(Looper.getMainLooper());
     private Runnable timerRunnable;
     private TextToSpeech textToSpeech; // Declare TextToSpeech object
+
+    private MapView mapView;
+    private GoogleMap googleMap;
+    private FusedLocationProviderClient fusedLocationProviderClient;
+    private LocationCallback locationCallback;
+    private Polyline trail;
+    private boolean isTracking = false;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -116,6 +140,32 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
             updateTotalDurationDisplay();
         }
 
+        Button startButton = findViewById(R.id.button_start_all);
+        Button pauseButton = findViewById(R.id.button_pause_all);
+        Button stopButton = findViewById(R.id.button_stop_all);
+        Button resetButton = findViewById(R.id.button_reset_all);
+
+        startButton.setOnClickListener(v -> startTimerAtIndex(currentTimerIndex));
+        pauseButton.setOnClickListener(v -> {
+            handler.removeCallbacks(timerRunnable);
+            if (currentTimerIndex < timerList.size()) {
+                timerList.get(currentTimerIndex).setRunning(false);
+                timerAdapter.notifyItemChanged(currentTimerIndex);
+            }
+            timerAdapter.setRunningTimerPosition(-1); // Clear highlight on pause
+        });
+        stopButton.setOnClickListener(v -> {
+            handler.removeCallbacks(timerRunnable);
+            if (currentTimerIndex < timerList.size()) {
+                Timer timer = timerList.get(currentTimerIndex);
+                timer.setRunning(false);
+                timer.setTimeLeftInMillis(timer.getTotalTimeInMillis());
+                timerAdapter.notifyItemChanged(currentTimerIndex);
+            }
+            timerAdapter.setRunningTimerPosition(-1); // Clear highlight on stop
+        });
+        resetButton.setOnClickListener(v -> resetSession());
+
         roundDisplayTextView.setOnClickListener(v -> showSetTotalRoundsDialog());
 
         updateTitleBar(); // Initial update of the title bar
@@ -140,17 +190,110 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
                 Log.e(TAG, "TextToSpeech initialization failed");
             }
         });
+
+        mapView = findViewById(R.id.map_view);
+        mapView.onCreate(savedInstanceState);
+        mapView.getMapAsync(this);
+
+        fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this);
+    }
+
+    @Override
+    public void onMapReady(GoogleMap googleMap) {
+        this.googleMap = googleMap;
+        if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            googleMap.setMyLocationEnabled(true);
+        } else {
+            requestPermissions(new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION}, LOCATION_PERMISSION_REQUEST_CODE);
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == LOCATION_PERMISSION_REQUEST_CODE) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                    googleMap.setMyLocationEnabled(true);
+                }
+            } else {
+                Toast.makeText(this, "Location permission is required to show the map.", Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+
+    private void startTracking() {
+        if (googleMap == null) return;
+        if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
+
+        isTracking = true;
+        googleMap.clear();
+        PolylineOptions polylineOptions = new PolylineOptions().color(R.color.purple_500).width(10);
+        trail = googleMap.addPolyline(polylineOptions);
+
+        LocationRequest locationRequest = LocationRequest.create();
+        locationRequest.setInterval(5000);
+        locationRequest.setFastestInterval(2500);
+        locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
+
+        locationCallback = new LocationCallback() {
+            @Override
+            public void onLocationResult(LocationResult locationResult) {
+                if (locationResult == null) {
+                    return;
+                }
+                for (android.location.Location location : locationResult.getLocations()) {
+                    LatLng newPoint = new LatLng(location.getLatitude(), location.getLongitude());
+                    List<LatLng> points = trail.getPoints();
+                    points.add(newPoint);
+                    trail.setPoints(points);
+                    googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(newPoint, 15));
+                }
+            }
+        };
+
+        fusedLocationProviderClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper());
+    }
+
+    private void stopTracking() {
+        isTracking = false;
+        if (fusedLocationProviderClient != null && locationCallback != null) {
+            fusedLocationProviderClient.removeLocationUpdates(locationCallback);
+        }
+    }
+
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        mapView.onStart();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        mapView.onResume();
     }
 
     @Override
     protected void onPause() {
         super.onPause();
+        mapView.onPause();
         saveData();
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        mapView.onStop();
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        mapView.onDestroy();
         // Stop any running timers and remove callbacks to prevent memory leaks
         handler.removeCallbacks(timerRunnable);
         // Shutdown TextToSpeech
@@ -159,6 +302,19 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
             textToSpeech.shutdown();
         }
     }
+
+    @Override
+    public void onLowMemory() {
+        super.onLowMemory();
+        mapView.onLowMemory();
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        mapView.onSaveInstanceState(outState);
+    }
+
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
@@ -319,6 +475,7 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
     // Method to reset the entire session
     private void resetSession() {
         Log.d(TAG, "resetSession called.");
+        stopTracking();
         // Stop all timers and remove callbacks
         handler.removeCallbacks(timerRunnable);
         for (int i = 0; i < timerList.size(); i++) {
@@ -336,6 +493,7 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
         currentRound = 1;
         currentTimerIndex = 0;
         updateRoundDisplay();
+        timerAdapter.setRunningTimerPosition(-1); // Clear highlight
         timerAdapter.notifyDataSetChanged(); // Refresh all timers' UI
         Log.d(TAG, "resetSession finished. Current round: " + currentRound + ", Current timer index: " + currentTimerIndex);
     }
@@ -371,7 +529,12 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
 
         // Update the current timer index
         currentTimerIndex = index;
+        timerAdapter.setRunningTimerPosition(currentTimerIndex); // Highlight the running timer
         Log.d(TAG, "currentTimerIndex set to: " + currentTimerIndex);
+
+        if (currentTimerIndex == 0 && currentRound == 1 && !isTracking) {
+            startTracking();
+        }
 
         // Speak the timer label if enabled
         if (timerList.get(currentTimerIndex).getSpeakLabelOnStart()) {
@@ -432,24 +595,6 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
         }
         handler.postDelayed(timerRunnable, 1000);
         Log.d(TAG, "TimerRunnable scheduled for 1000ms.");
-    }
-
-    @Override
-    public void onTimerStartStop(int position, Timer timer) {
-        Log.d(TAG, "onTimerStartStop called for position: " + position + ", timer label: " + timer.getLabel());
-        if (timer.isRunning()) {
-            // If the clicked timer is running, stop it.
-            handler.removeCallbacks(timerRunnable);
-            timer.setRunning(false);
-            timer.setTimeLeftInMillis(timer.getTotalTimeInMillis()); // Reset time
-            timerAdapter.notifyItemChanged(position);
-            Log.d(TAG, "Timer at position " + position + " stopped.");
-        } else {
-            // If the clicked timer is not running, start it.
-            startTimerAtIndex(position);
-            Log.d(TAG, "Timer at position " + position + " started.");
-        }
-        saveData(); // Save state after interaction
     }
 
     public void onTimerClick(int position, Timer timer) {
