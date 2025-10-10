@@ -15,7 +15,12 @@ android {
         minSdk = 24
         targetSdk = 36
         versionCode = 1
-        versionName = "1.0"
+        
+        // Dynamic version name
+        val majorVersion = 0
+        val commitCount = "git rev-list --count HEAD".runCommand().trim()
+        val commitHash = "git rev-parse --short HEAD".runCommand().trim()
+        versionName = "$majorVersion.$commitCount-$commitHash"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -36,7 +41,13 @@ android {
     }
     buildFeatures {
         viewBinding = true
+        buildConfig = true
     }
+}
+
+fun String.runCommand(): String {
+    val process = ProcessBuilder(split(" ")).start()
+    return process.inputStream.bufferedReader().readText()
 }
 
 dependencies {

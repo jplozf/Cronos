@@ -7,6 +7,8 @@ import android.media.MediaPlayer;
 import android.media.Ringtone;
 import android.media.RingtoneManager;
 import android.net.Uri;
+import android.media.AudioManager;
+import android.media.ToneGenerator;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.util.Log;
@@ -65,6 +67,8 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
     private static final String SCHEME_NAMES_KEY = "schemeNames";
     private static final String CURRENT_SCHEME_NAME_KEY = "currentSchemeName";
     private static final String DEFAULT_RINGTONE_URI_KEY = "defaultRingtoneUri";
+    private static final String COUNTDOWN_BEEP_KEY = "countdownBeepEnabled";
+    private static final String KEEP_SCREEN_ON_KEY = "keepScreenOn";
     private static final int RINGTONE_PICKER_REQUEST_CODE = 2; // Different from SettingsActivity's request code
     private static final int LOCATION_PERMISSION_REQUEST_CODE = 1;
 
@@ -86,6 +90,7 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
     private Handler handler = new Handler(Looper.getMainLooper());
     private Runnable timerRunnable;
     private TextToSpeech textToSpeech; // Declare TextToSpeech object
+    private ToneGenerator toneGenerator; // Add ToneGenerator
 
     private MapView osmdroidMapView;
     private MyLocationNewOverlay myLocationOverlay;
@@ -188,6 +193,9 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
             }
         });
 
+        // Initialize ToneGenerator
+        toneGenerator = new ToneGenerator(AudioManager.STREAM_ALARM, 100);
+
         Configuration.getInstance().load(this, PreferenceManager.getDefaultSharedPreferences(this));
         Configuration.getInstance().setUserAgentValue(getPackageName());
 
@@ -236,7 +244,7 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
     @Override
     protected void onResume() {
         super.onResume();
-
+        updateKeepScreenOn();
     }
 
     @Override
@@ -262,6 +270,11 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
         if (textToSpeech != null) {
             textToSpeech.stop();
             textToSpeech.shutdown();
+        }
+        // Release the ToneGenerator
+        if (toneGenerator != null) {
+            toneGenerator.release();
+            toneGenerator = null;
         }
     }
 
@@ -534,6 +547,13 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
                     if (runningTimer != null) {
                         runningTimer.setTimeLeftInMillis(runningTimer.getTimeLeftInMillis() - 1000); // Decrement by 1 second
 
+                        // Beep in the last 5 seconds, if enabled
+                        SharedPreferences sharedPreferences = getSharedPreferences(SHARED_PREFS, MODE_PRIVATE);
+                        boolean countdownBeepEnabled = sharedPreferences.getBoolean(COUNTDOWN_BEEP_KEY, true);
+                        if (countdownBeepEnabled && runningTimer.getTimeLeftInMillis() <= 5000 && runningTimer.getTimeLeftInMillis() > 0) {
+                            toneGenerator.startTone(ToneGenerator.TONE_CDMA_PIP, 150); // Play a short beep
+                        }
+
                         if (runningTimer.getTimeLeftInMillis() <= 0) {
                             runningTimer.setTimeLeftInMillis(0);
                             runningTimer.setRunning(false);
@@ -641,6 +661,13 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
                 Log.d(TAG, "All rounds and timers finished.");
                 resetSession(); // Reset the session to initial state
                 Toast.makeText(this, "All rounds completed!", Toast.LENGTH_LONG).show();
+
+                // Play congratulations sound
+                MediaPlayer mediaPlayer = MediaPlayer.create(this, R.raw.tada);
+                if (mediaPlayer != null) {
+                    mediaPlayer.start();
+                    mediaPlayer.setOnCompletionListener(mp -> mp.release());
+                }
             }
         }
         saveData(); // Save state after interaction
@@ -850,6 +877,16 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
     private void updateTitleBar() {
         if (getSupportActionBar() != null) {
             getSupportActionBar().setTitle(getString(R.string.app_name) + " - " + currentSchemeName);
+        }
+    }
+
+    private void updateKeepScreenOn() {
+        SharedPreferences sharedPreferences = getSharedPreferences(SHARED_PREFS, MODE_PRIVATE);
+        boolean keepScreenOn = sharedPreferences.getBoolean(KEEP_SCREEN_ON_KEY, true);
+        if (keepScreenOn) {
+            getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        } else {
+            getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         }
     }
 }

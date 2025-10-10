@@ -29,4 +29,26 @@
         android:text="No ringtone selected"
         android:layout_marginTop="16dp"/>
 
+    <Switch
+        android:id="@+id/countdown_beep_switch"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Enable Countdown Beep"
+        android:layout_marginTop="24dp"/>
+
+    <Switch
+        android:id="@+id/keep_screen_on_switch"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Keep Screen On"
+        android:layout_marginTop="24dp"/>
+
+    <TextView
+        android:id="@+id/version_text_view"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="32dp"
+        android:layout_gravity="center_horizontal"
+        tools:text="Cronos v0.1-abcdef" />
+
 </LinearLayout>

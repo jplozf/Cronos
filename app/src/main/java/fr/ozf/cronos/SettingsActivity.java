@@ -9,6 +9,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.widget.Button;
+import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -19,10 +20,15 @@ public class SettingsActivity extends AppCompatActivity {
 
     private static final String SHARED_PREFS = "sharedPrefs";
     private static final String DEFAULT_RINGTONE_URI_KEY = "defaultRingtoneUri";
+    private static final String COUNTDOWN_BEEP_KEY = "countdownBeepEnabled";
+    private static final String KEEP_SCREEN_ON_KEY = "keepScreenOn";
     private static final int RINGTONE_PICKER_REQUEST_CODE = 1;
 
     private Button selectRingtoneButton;
     private TextView selectedRingtoneTextView;
+    private Switch countdownBeepSwitch;
+    private Switch keepScreenOnSwitch;
+    private TextView versionTextView;
 
     private Uri selectedRingtoneUri;
 
@@ -33,8 +39,14 @@ public class SettingsActivity extends AppCompatActivity {
 
         selectRingtoneButton = findViewById(R.id.select_ringtone_button);
         selectedRingtoneTextView = findViewById(R.id.selected_ringtone_text_view);
+        countdownBeepSwitch = findViewById(R.id.countdown_beep_switch);
+        keepScreenOnSwitch = findViewById(R.id.keep_screen_on_switch);
+        versionTextView = findViewById(R.id.version_text_view);
 
         loadDefaultRingtone();
+        loadCountdownBeepSetting();
+        loadKeepScreenOnSetting();
+        setVersionInfo();
 
         selectRingtoneButton.setOnClickListener(v -> {
             Intent intent = new Intent(RingtoneManager.ACTION_RINGTONE_PICKER);
@@ -42,6 +54,14 @@ public class SettingsActivity extends AppCompatActivity {
             intent.putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Select Notification Sound");
             intent.putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, selectedRingtoneUri);
             startActivityForResult(intent, RINGTONE_PICKER_REQUEST_CODE);
+        });
+
+        countdownBeepSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            saveCountdownBeepSetting(isChecked);
+        });
+
+        keepScreenOnSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            saveKeepScreenOnSetting(isChecked);
         });
     }
 
@@ -94,5 +114,36 @@ public class SettingsActivity extends AppCompatActivity {
         } else {
             selectedRingtoneTextView.setText("No ringtone selected");
         }
+    }
+
+    private void loadCountdownBeepSetting() {
+        SharedPreferences sharedPreferences = getSharedPreferences(SHARED_PREFS, MODE_PRIVATE);
+        boolean countdownBeepEnabled = sharedPreferences.getBoolean(COUNTDOWN_BEEP_KEY, true); // Default to true
+        countdownBeepSwitch.setChecked(countdownBeepEnabled);
+    }
+
+    private void saveCountdownBeepSetting(boolean isEnabled) {
+        SharedPreferences sharedPreferences = getSharedPreferences(SHARED_PREFS, MODE_PRIVATE);
+        SharedPreferences.Editor editor = sharedPreferences.edit();
+        editor.putBoolean(COUNTDOWN_BEEP_KEY, isEnabled);
+        editor.apply();
+    }
+
+    private void loadKeepScreenOnSetting() {
+        SharedPreferences sharedPreferences = getSharedPreferences(SHARED_PREFS, MODE_PRIVATE);
+        boolean keepScreenOnEnabled = sharedPreferences.getBoolean(KEEP_SCREEN_ON_KEY, true); // Default to true
+        keepScreenOnSwitch.setChecked(keepScreenOnEnabled);
+    }
+
+    private void saveKeepScreenOnSetting(boolean isEnabled) {
+        SharedPreferences sharedPreferences = getSharedPreferences(SHARED_PREFS, MODE_PRIVATE);
+        SharedPreferences.Editor editor = sharedPreferences.edit();
+        editor.putBoolean(KEEP_SCREEN_ON_KEY, isEnabled);
+        editor.apply();
+    }
+
+    private void setVersionInfo() {
+        String version = "Cronos v" + BuildConfig.VERSION_NAME;
+        versionTextView.setText(version);
     }
 }
