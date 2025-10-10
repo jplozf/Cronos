@@ -33,18 +33,14 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.google.android.gms.location.FusedLocationProviderClient;
-import com.google.android.gms.location.LocationCallback;
-import com.google.android.gms.location.LocationRequest;
-import com.google.android.gms.location.LocationResult;
-import com.google.android.gms.location.LocationServices;
-import com.google.android.gms.maps.CameraUpdateFactory;
-import com.google.android.gms.maps.GoogleMap;
-import com.google.android.gms.maps.MapView;
-import com.google.android.gms.maps.OnMapReadyCallback;
-import com.google.android.gms.maps.model.LatLng;
-import com.google.android.gms.maps.model.Polyline;
-import com.google.android.gms.maps.model.PolylineOptions;
+import org.osmdroid.config.Configuration;
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory;
+import org.osmdroid.util.GeoPoint;
+import org.osmdroid.views.MapView;
+import org.osmdroid.views.overlay.Polyline;
+import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider;
+import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay;
+import android.preference.PreferenceManager;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
@@ -58,7 +54,7 @@ import java.util.concurrent.TimeUnit;
 
 import fr.ozf.cronos.databinding.ActivityMainBinding;
 
-public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTimerClickListener, TimerAdapter.OnTimerFinishListener, OnMapReadyCallback {
+public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTimerClickListener, TimerAdapter.OnTimerFinishListener {
 
     private static final String SHARED_PREFS = "sharedPrefs";
     private static final String TIMER_LIST_KEY = "timerList";
@@ -91,10 +87,8 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
     private Runnable timerRunnable;
     private TextToSpeech textToSpeech; // Declare TextToSpeech object
 
-    private MapView mapView;
-    private GoogleMap googleMap;
-    private FusedLocationProviderClient fusedLocationProviderClient;
-    private LocationCallback locationCallback;
+    private MapView osmdroidMapView;
+    private MyLocationNewOverlay myLocationOverlay;
     private Polyline trail;
     private boolean isTracking = false;
 
@@ -102,6 +96,9 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        // Important! Set your user agent to prevent getting banned from the OSM servers
+        Configuration.getInstance().load(this, PreferenceManager.getDefaultSharedPreferences(this));
 
         binding = ActivityMainBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
@@ -191,76 +188,41 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
             }
         });
 
-        mapView = findViewById(R.id.map_view);
-        mapView.onCreate(savedInstanceState);
-        mapView.getMapAsync(this);
+        Configuration.getInstance().load(this, PreferenceManager.getDefaultSharedPreferences(this));
+        Configuration.getInstance().setUserAgentValue(getPackageName());
 
-        fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this);
+        osmdroidMapView = findViewById(R.id.map_view);
+        osmdroidMapView.setTileSource(TileSourceFactory.MAPNIK);
+        osmdroidMapView.setBuiltInZoomControls(true);
+        osmdroidMapView.setMultiTouchControls(true);
+
+        // Set a default starting position and zoom level
+        osmdroidMapView.getController().setZoom(15.0);
+        osmdroidMapView.getController().setCenter(new GeoPoint(48.8583, 2.2945)); // Eiffel Tower as a default
+
+        myLocationOverlay = new MyLocationNewOverlay(new GpsMyLocationProvider(this), osmdroidMapView);
+        myLocationOverlay.enableMyLocation();
+        osmdroidMapView.getOverlays().add(myLocationOverlay);
     }
 
-    @Override
-    public void onMapReady(GoogleMap googleMap) {
-        this.googleMap = googleMap;
-        if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-            googleMap.setMyLocationEnabled(true);
-        } else {
-            requestPermissions(new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION}, LOCATION_PERMISSION_REQUEST_CODE);
-        }
-    }
 
-    @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == LOCATION_PERMISSION_REQUEST_CODE) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-                    googleMap.setMyLocationEnabled(true);
-                }
-            } else {
-                Toast.makeText(this, "Location permission is required to show the map.", Toast.LENGTH_SHORT).show();
-            }
-        }
-    }
 
     private void startTracking() {
-        if (googleMap == null) return;
-        if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            return;
-        }
-
         isTracking = true;
-        googleMap.clear();
-        PolylineOptions polylineOptions = new PolylineOptions().color(R.color.purple_500).width(10);
-        trail = googleMap.addPolyline(polylineOptions);
+        osmdroidMapView.getOverlay().clear();
+        trail = new Polyline(osmdroidMapView);
+        trail.setColor(getColor(R.color.purple_500));
+        trail.setWidth(10f);
+        osmdroidMapView.getOverlays().add(trail);
 
-        LocationRequest locationRequest = LocationRequest.create();
-        locationRequest.setInterval(5000);
-        locationRequest.setFastestInterval(2500);
-        locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
-
-        locationCallback = new LocationCallback() {
-            @Override
-            public void onLocationResult(LocationResult locationResult) {
-                if (locationResult == null) {
-                    return;
-                }
-                for (android.location.Location location : locationResult.getLocations()) {
-                    LatLng newPoint = new LatLng(location.getLatitude(), location.getLongitude());
-                    List<LatLng> points = trail.getPoints();
-                    points.add(newPoint);
-                    trail.setPoints(points);
-                    googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(newPoint, 15));
-                }
-            }
-        };
-
-        fusedLocationProviderClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper());
+        myLocationOverlay.enableFollowLocation();
     }
 
     private void stopTracking() {
         isTracking = false;
-        if (fusedLocationProviderClient != null && locationCallback != null) {
-            fusedLocationProviderClient.removeLocationUpdates(locationCallback);
+        if (myLocationOverlay != null) {
+            myLocationOverlay.disableFollowLocation();
+            myLocationOverlay.disableMyLocation();
         }
     }
 
@@ -268,32 +230,32 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
     @Override
     protected void onStart() {
         super.onStart();
-        mapView.onStart();
+
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        mapView.onResume();
+
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        mapView.onPause();
+
         saveData();
     }
 
     @Override
     protected void onStop() {
         super.onStop();
-        mapView.onStop();
+
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        mapView.onDestroy();
+
         // Stop any running timers and remove callbacks to prevent memory leaks
         handler.removeCallbacks(timerRunnable);
         // Shutdown TextToSpeech
@@ -306,13 +268,13 @@ public class MainActivity extends AppCompatActivity implements TimerAdapter.OnTi
     @Override
     public void onLowMemory() {
         super.onLowMemory();
-        mapView.onLowMemory();
+
     }
 
     @Override
     protected void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
-        mapView.onSaveInstanceState(outState);
+
     }
 
 

@@ -18,15 +18,7 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        // Read the API key from local.properties
-        val properties = Properties()
-        val localPropertiesFile = project.rootProject.file("local.properties")
-        if (localPropertiesFile.exists()) {
-            properties.load(FileInputStream(localPropertiesFile))
-        }
-        val mykey = properties.getProperty("GOOGLE_MAP_API_KEY")
 
-        manifestPlaceholders["GOOGLE_MAP_API_KEY"] = mykey
     }
 
     buildTypes {
@@ -51,9 +43,9 @@ dependencies {
 
     implementation(libs.appcompat)
     implementation(libs.material)
-    implementation(libs.constraintlayout)
-    implementation(libs.play.services.maps)
-    implementation(libs.play.services.location)
+    implementation(libs.navigation.ui)
+    implementation("org.osmdroid:osmdroid-android:6.1.20")
+
     implementation("androidx.recyclerview:recyclerview:1.3.2")
     implementation("androidx.cardview:cardview:1.0.0")
     implementation("com.google.code.gson:gson:2.10.1")
