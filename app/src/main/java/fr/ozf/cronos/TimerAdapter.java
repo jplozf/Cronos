@@ -60,7 +60,7 @@ public class TimerAdapter extends RecyclerView.Adapter<TimerAdapter.TimerViewHol
             holder.bind(timer, position);
 
             if (position == runningTimerPosition) {
-                holder.timerItemLayout.setBackgroundColor(context.getResources().getColor(android.R.color.holo_blue_light));
+                holder.timerItemLayout.setBackgroundColor(context.getResources().getColor(R.color.green_light));
             } else {
                 holder.timerItemLayout.setBackgroundColor(context.getResources().getColor(android.R.color.darker_gray));
             }

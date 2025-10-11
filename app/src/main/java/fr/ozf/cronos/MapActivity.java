@@ -137,7 +137,7 @@ public class MapActivity extends AppCompatActivity {
         
         // Create new trail
         trail = new Polyline(mapView);
-        trail.setColor(ContextCompat.getColor(this, R.color.purple_500));
+        trail.setColor(ContextCompat.getColor(this, R.color.green_primary));
         trail.setWidth(10f);
         
         // Add initial point to prevent null LinearRing issues
