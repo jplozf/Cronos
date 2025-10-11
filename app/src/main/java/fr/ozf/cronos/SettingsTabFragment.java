@@ -29,6 +29,7 @@ public class SettingsTabFragment extends Fragment {
     private static final String DEFAULT_RINGTONE_URI_KEY = "defaultRingtoneUri";
     private static final String COUNTDOWN_BEEP_KEY = "countdownBeepEnabled";
     private static final String KEEP_SCREEN_ON_KEY = "keepScreenOn";
+    private static final String HALFWAY_WARNING_KEY = "halfwayWarningEnabled";
     private static final int RINGTONE_PICKER_REQUEST_CODE = 1;
 
     private FragmentSettingsTabBinding binding;
@@ -36,6 +37,7 @@ public class SettingsTabFragment extends Fragment {
     private TextView selectedRingtoneTextView;
     private Switch countdownBeepSwitch;
     private Switch keepScreenOnSwitch;
+    private Switch halfwayWarningSwitch;
     private TextView versionTextView;
 
     private Uri selectedRingtoneUri;
@@ -50,11 +52,13 @@ public class SettingsTabFragment extends Fragment {
         selectedRingtoneTextView = root.findViewById(R.id.selected_ringtone_text_view);
         countdownBeepSwitch = root.findViewById(R.id.countdown_beep_switch);
         keepScreenOnSwitch = root.findViewById(R.id.keep_screen_on_switch);
+        halfwayWarningSwitch = root.findViewById(R.id.halfway_warning_switch);
         versionTextView = root.findViewById(R.id.version_text_view);
 
         loadDefaultRingtone();
         loadCountdownBeepSetting();
         loadKeepScreenOnSetting();
+        loadHalfwayWarningSetting();
         setVersionInfo();
 
         selectRingtoneButton.setOnClickListener(v -> {
@@ -77,6 +81,10 @@ public class SettingsTabFragment extends Fragment {
             } else {
                 requireActivity().getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
             }
+        });
+
+        halfwayWarningSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            saveHalfwayWarningSetting(isChecked);
         });
 
         return root;
@@ -154,6 +162,19 @@ public class SettingsTabFragment extends Fragment {
         SharedPreferences sharedPreferences = requireContext().getSharedPreferences(SHARED_PREFS, Context.MODE_PRIVATE);
         SharedPreferences.Editor editor = sharedPreferences.edit();
         editor.putBoolean(KEEP_SCREEN_ON_KEY, isEnabled);
+        editor.apply();
+    }
+
+    private void loadHalfwayWarningSetting() {
+        SharedPreferences sharedPreferences = requireContext().getSharedPreferences(SHARED_PREFS, Context.MODE_PRIVATE);
+        boolean halfwayWarningEnabled = sharedPreferences.getBoolean(HALFWAY_WARNING_KEY, false);
+        halfwayWarningSwitch.setChecked(halfwayWarningEnabled);
+    }
+
+    private void saveHalfwayWarningSetting(boolean isEnabled) {
+        SharedPreferences sharedPreferences = requireContext().getSharedPreferences(SHARED_PREFS, Context.MODE_PRIVATE);
+        SharedPreferences.Editor editor = sharedPreferences.edit();
+        editor.putBoolean(HALFWAY_WARNING_KEY, isEnabled);
         editor.apply();
     }
 

@@ -71,6 +71,7 @@ public class HomeFragment extends Fragment implements TimerAdapter.OnTimerClickL
 
     private static final String SHARED_PREFS_TRAINING_HISTORY = "sharedPrefsTrainingHistory";
     private static final String TRAINING_HISTORY_LIST_KEY = "trainingHistoryList";
+    private static final String HALFWAY_WARNING_KEY = "halfwayWarningEnabled";
 
     private FragmentHomeBinding binding;
     private TimerAdapter timerAdapter;
@@ -83,6 +84,7 @@ public class HomeFragment extends Fragment implements TimerAdapter.OnTimerClickL
     private String currentSchemeName = "Default";
     private int editingTimerPosition = -1;
     private long sessionStartTime = 0;
+    private boolean halfwayWarningGiven = false;
 
     private Gson gson = new Gson();
     private Handler handler = new Handler(Looper.getMainLooper());
@@ -91,6 +93,14 @@ public class HomeFragment extends Fragment implements TimerAdapter.OnTimerClickL
     private ToneGenerator toneGenerator;
 
     // Map moved to separate MapActivity
+
+    private long getTotalSchemeDurationMillis() {
+        long totalMillis = 0;
+        for (Timer timer : timerList) {
+            totalMillis += timer.getTotalTimeInMillis();
+        }
+        return totalMillis * totalRounds;
+    }
 
     @Nullable
     @Override
@@ -522,6 +532,7 @@ public class HomeFragment extends Fragment implements TimerAdapter.OnTimerClickL
         }
         currentRound = 1;
         currentTimerIndex = 0;
+        halfwayWarningGiven = false; // Reset halfway warning flag
         updateRoundDisplay();
         timerAdapter.setRunningTimerPosition(-1);
         timerAdapter.notifyDataSetChanged();
@@ -557,6 +568,7 @@ public class HomeFragment extends Fragment implements TimerAdapter.OnTimerClickL
 
         if (currentRound == 1 && currentTimerIndex == 0 && sessionStartTime == 0) {
             sessionStartTime = System.currentTimeMillis();
+            halfwayWarningGiven = false; // Reset halfway warning flag for a new session
             Log.d(TAG, "Session start time recorded: " + sessionStartTime);
         }
 
@@ -606,6 +618,22 @@ public class HomeFragment extends Fragment implements TimerAdapter.OnTimerClickL
                             Log.d(TAG, "Timer at index " + runningTimerPosition + " finished.");
                             onTimerFinish(runningTimerPosition, runningTimer);
                         } else {
+                            // Check for halfway warning
+                            if (!halfwayWarningGiven && sessionStartTime != 0) {
+                                boolean halfwayWarningEnabled = sharedPreferences.getBoolean(HALFWAY_WARNING_KEY, false);
+
+                                if (halfwayWarningEnabled) {
+                                    long elapsedTime = System.currentTimeMillis() - sessionStartTime;
+                                    long totalSchemeDuration = getTotalSchemeDurationMillis();
+                                    if (totalSchemeDuration > 0 && elapsedTime >= totalSchemeDuration / 2) {
+                                        if (textToSpeech != null && !textToSpeech.isSpeaking()) {
+                                            textToSpeech.speak("Time to go back", TextToSpeech.QUEUE_FLUSH, null, null);
+                                            Log.d(TAG, "Halfway warning: Time to go back");
+                                        }
+                                        halfwayWarningGiven = true;
+                                    }
+                                }
+                            }
                             timerAdapter.notifyItemChanged(runningTimerPosition);
                             handler.postDelayed(this, 1000);
                             Log.d(TAG, "Scheduled next tick for timer at " + runningTimerPosition);
