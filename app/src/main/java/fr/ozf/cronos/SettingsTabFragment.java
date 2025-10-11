@@ -9,6 +9,7 @@ import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.Settings;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -34,6 +35,7 @@ public class SettingsTabFragment extends Fragment {
 
     private FragmentSettingsTabBinding binding;
     private Button selectRingtoneButton;
+    private Button testRingtoneButton;
     private TextView selectedRingtoneTextView;
     private Switch countdownBeepSwitch;
     private Switch keepScreenOnSwitch;
@@ -49,6 +51,7 @@ public class SettingsTabFragment extends Fragment {
         View root = binding.getRoot();
 
         selectRingtoneButton = root.findViewById(R.id.select_ringtone_button);
+        testRingtoneButton = root.findViewById(R.id.test_ringtone_button);
         selectedRingtoneTextView = root.findViewById(R.id.selected_ringtone_text_view);
         countdownBeepSwitch = root.findViewById(R.id.countdown_beep_switch);
         keepScreenOnSwitch = root.findViewById(R.id.keep_screen_on_switch);
@@ -67,6 +70,28 @@ public class SettingsTabFragment extends Fragment {
             intent.putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Select Notification Sound");
             intent.putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, selectedRingtoneUri);
             startActivityForResult(intent, RINGTONE_PICKER_REQUEST_CODE);
+        });
+
+        testRingtoneButton.setOnClickListener(v -> {
+            if (selectedRingtoneUri != null) {
+                try {
+                    Ringtone ringtone = RingtoneManager.getRingtone(requireContext(), selectedRingtoneUri);
+                    if (ringtone != null) {
+                        ringtone.play();
+                        Toast.makeText(requireContext(), "Playing ringtone", Toast.LENGTH_SHORT).show();
+                        Log.d("SettingsTabFragment", "Playing ringtone: " + selectedRingtoneUri.toString());
+                    } else {
+                        Toast.makeText(requireContext(), "Ringtone not found", Toast.LENGTH_SHORT).show();
+                        Log.e("SettingsTabFragment", "Ringtone object is null for URI: " + selectedRingtoneUri.toString());
+                    }
+                } catch (Exception e) {
+                    Toast.makeText(requireContext(), "Error playing ringtone", Toast.LENGTH_SHORT).show();
+                    Log.e("SettingsTabFragment", "Error playing ringtone: " + e.getMessage(), e);
+                }
+            } else {
+                Toast.makeText(requireContext(), "No ringtone selected", Toast.LENGTH_SHORT).show();
+                Log.d("SettingsTabFragment", "Test Sound clicked, but no ringtone URI selected.");
+            }
         });
 
         countdownBeepSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
@@ -133,9 +158,9 @@ public class SettingsTabFragment extends Fragment {
         if (selectedRingtoneUri != null) {
             Ringtone ringtone = RingtoneManager.getRingtone(requireContext(), selectedRingtoneUri);
             String ringtoneName = ringtone.getTitle(requireContext());
-            selectedRingtoneTextView.setText("Selected Ringtone: " + ringtoneName);
+            selectedRingtoneTextView.setText(String.format("Ringtone: %s", ringtoneName));
         } else {
-            selectedRingtoneTextView.setText("No ringtone selected");
+            selectedRingtoneTextView.setText("Ringtone: (None)");
         }
     }
 

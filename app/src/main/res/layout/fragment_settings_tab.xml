@@ -13,42 +13,63 @@
         android:layout_height="wrap_content"
         android:text="Settings"
         android:textSize="24sp"
+        android:textStyle="bold"
         android:layout_marginBottom="24dp"/>
 
-    <Button
-        android:id="@+id/select_ringtone_button"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Select Default Ringtone"/>
-
-    <TextView
-        android:id="@+id/selected_ringtone_text_view"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="No ringtone selected"
-        android:layout_marginTop="16dp"/>
-
+    <!-- Switches -->
     <Switch
         android:id="@+id/countdown_beep_switch"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="Enable Countdown Beep"
-        android:layout_marginTop="24dp"/>
+        android:layout_marginTop="8dp"/>
 
     <Switch
         android:id="@+id/keep_screen_on_switch"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="Keep Screen On"
-        android:layout_marginTop="24dp"/>
+        android:layout_marginTop="16dp"/>
 
     <Switch
         android:id="@+id/halfway_warning_switch"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="Enable Halfway Warning"
-        android:layout_marginTop="24dp"/>
+        android:layout_marginTop="16dp"/>
 
+    <!-- Ringtone Selection Row -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="32dp"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/selected_ringtone_text_view"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Ringtone: (None)" />
+
+        <Button
+            android:id="@+id/select_ringtone_button"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:text="Select" />
+
+        <Button
+            android:id="@+id/test_ringtone_button"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="Test" />
+
+    </LinearLayout>
+
+    <!-- Version Info -->
     <TextView
         android:id="@+id/version_text_view"
         android:layout_width="wrap_content"
