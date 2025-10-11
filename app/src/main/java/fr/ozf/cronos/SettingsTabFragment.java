@@ -1,6 +1,7 @@
 package fr.ozf.cronos;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.media.Ringtone;
@@ -8,15 +9,21 @@ import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.Settings;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.appcompat.app.AppCompatActivity;
+import androidx.fragment.app.Fragment;
 
-public class SettingsActivity extends AppCompatActivity {
+import fr.ozf.cronos.databinding.FragmentSettingsTabBinding;
+
+public class SettingsTabFragment extends Fragment {
 
     private static final String SHARED_PREFS = "sharedPrefs";
     private static final String DEFAULT_RINGTONE_URI_KEY = "defaultRingtoneUri";
@@ -24,6 +31,7 @@ public class SettingsActivity extends AppCompatActivity {
     private static final String KEEP_SCREEN_ON_KEY = "keepScreenOn";
     private static final int RINGTONE_PICKER_REQUEST_CODE = 1;
 
+    private FragmentSettingsTabBinding binding;
     private Button selectRingtoneButton;
     private TextView selectedRingtoneTextView;
     private Switch countdownBeepSwitch;
@@ -32,16 +40,17 @@ public class SettingsActivity extends AppCompatActivity {
 
     private Uri selectedRingtoneUri;
 
+    @Nullable
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_settings);
+    public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
+        binding = FragmentSettingsTabBinding.inflate(inflater, container, false);
+        View root = binding.getRoot();
 
-        selectRingtoneButton = findViewById(R.id.select_ringtone_button);
-        selectedRingtoneTextView = findViewById(R.id.selected_ringtone_text_view);
-        countdownBeepSwitch = findViewById(R.id.countdown_beep_switch);
-        keepScreenOnSwitch = findViewById(R.id.keep_screen_on_switch);
-        versionTextView = findViewById(R.id.version_text_view);
+        selectRingtoneButton = root.findViewById(R.id.select_ringtone_button);
+        selectedRingtoneTextView = root.findViewById(R.id.selected_ringtone_text_view);
+        countdownBeepSwitch = root.findViewById(R.id.countdown_beep_switch);
+        keepScreenOnSwitch = root.findViewById(R.id.keep_screen_on_switch);
+        versionTextView = root.findViewById(R.id.version_text_view);
 
         loadDefaultRingtone();
         loadCountdownBeepSetting();
@@ -62,10 +71,19 @@ public class SettingsActivity extends AppCompatActivity {
 
         keepScreenOnSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
             saveKeepScreenOnSetting(isChecked);
+            // Immediately apply the setting to the activity's window
+            if (isChecked) {
+                requireActivity().getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            } else {
+                requireActivity().getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            }
         });
+
+        return root;
     }
 
-    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == RINGTONE_PICKER_REQUEST_CODE && resultCode == Activity.RESULT_OK) {
             Uri uri = data.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI);
@@ -73,34 +91,31 @@ public class SettingsActivity extends AppCompatActivity {
                 selectedRingtoneUri = uri;
                 saveDefaultRingtone(selectedRingtoneUri);
                 updateSelectedRingtoneTextView();
-                Toast.makeText(this, "Default ringtone updated", Toast.LENGTH_SHORT).show();
+                Toast.makeText(requireContext(), "Default ringtone updated", Toast.LENGTH_SHORT).show();
 
-                // Play a preview of the selected ringtone
                 try {
-                    Ringtone ringtone = RingtoneManager.getRingtone(this, uri);
+                    Ringtone ringtone = RingtoneManager.getRingtone(requireContext(), uri);
                     ringtone.play();
                 } catch (Exception e) {
-                    // Handle exceptions, e.g., if the ringtone file is not accessible
-                    e.printStackTrace(); // Log the exception for debugging
+                    e.printStackTrace();
                 }
             }
         }
     }
 
     private void loadDefaultRingtone() {
-        SharedPreferences sharedPreferences = getSharedPreferences(SHARED_PREFS, MODE_PRIVATE);
+        SharedPreferences sharedPreferences = requireContext().getSharedPreferences(SHARED_PREFS, Context.MODE_PRIVATE);
         String ringtoneUriString = sharedPreferences.getString(DEFAULT_RINGTONE_URI_KEY, null);
         if (ringtoneUriString != null) {
             selectedRingtoneUri = Uri.parse(ringtoneUriString);
         } else {
-            // If no ringtone is set, use the system default notification sound
             selectedRingtoneUri = Settings.System.DEFAULT_NOTIFICATION_URI;
         }
         updateSelectedRingtoneTextView();
     }
 
     private void saveDefaultRingtone(Uri ringtoneUri) {
-        SharedPreferences sharedPreferences = getSharedPreferences(SHARED_PREFS, MODE_PRIVATE);
+        SharedPreferences sharedPreferences = requireContext().getSharedPreferences(SHARED_PREFS, Context.MODE_PRIVATE);
         SharedPreferences.Editor editor = sharedPreferences.edit();
         editor.putString(DEFAULT_RINGTONE_URI_KEY, ringtoneUri.toString());
         editor.apply();
@@ -108,8 +123,8 @@ public class SettingsActivity extends AppCompatActivity {
 
     private void updateSelectedRingtoneTextView() {
         if (selectedRingtoneUri != null) {
-            Ringtone ringtone = RingtoneManager.getRingtone(this, selectedRingtoneUri);
-            String ringtoneName = ringtone.getTitle(this);
+            Ringtone ringtone = RingtoneManager.getRingtone(requireContext(), selectedRingtoneUri);
+            String ringtoneName = ringtone.getTitle(requireContext());
             selectedRingtoneTextView.setText("Selected Ringtone: " + ringtoneName);
         } else {
             selectedRingtoneTextView.setText("No ringtone selected");
@@ -117,26 +132,26 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     private void loadCountdownBeepSetting() {
-        SharedPreferences sharedPreferences = getSharedPreferences(SHARED_PREFS, MODE_PRIVATE);
-        boolean countdownBeepEnabled = sharedPreferences.getBoolean(COUNTDOWN_BEEP_KEY, true); // Default to true
+        SharedPreferences sharedPreferences = requireContext().getSharedPreferences(SHARED_PREFS, Context.MODE_PRIVATE);
+        boolean countdownBeepEnabled = sharedPreferences.getBoolean(COUNTDOWN_BEEP_KEY, true);
         countdownBeepSwitch.setChecked(countdownBeepEnabled);
     }
 
     private void saveCountdownBeepSetting(boolean isEnabled) {
-        SharedPreferences sharedPreferences = getSharedPreferences(SHARED_PREFS, MODE_PRIVATE);
+        SharedPreferences sharedPreferences = requireContext().getSharedPreferences(SHARED_PREFS, Context.MODE_PRIVATE);
         SharedPreferences.Editor editor = sharedPreferences.edit();
         editor.putBoolean(COUNTDOWN_BEEP_KEY, isEnabled);
         editor.apply();
     }
 
     private void loadKeepScreenOnSetting() {
-        SharedPreferences sharedPreferences = getSharedPreferences(SHARED_PREFS, MODE_PRIVATE);
-        boolean keepScreenOnEnabled = sharedPreferences.getBoolean(KEEP_SCREEN_ON_KEY, true); // Default to true
+        SharedPreferences sharedPreferences = requireContext().getSharedPreferences(SHARED_PREFS, Context.MODE_PRIVATE);
+        boolean keepScreenOnEnabled = sharedPreferences.getBoolean(KEEP_SCREEN_ON_KEY, true);
         keepScreenOnSwitch.setChecked(keepScreenOnEnabled);
     }
 
     private void saveKeepScreenOnSetting(boolean isEnabled) {
-        SharedPreferences sharedPreferences = getSharedPreferences(SHARED_PREFS, MODE_PRIVATE);
+        SharedPreferences sharedPreferences = requireContext().getSharedPreferences(SHARED_PREFS, Context.MODE_PRIVATE);
         SharedPreferences.Editor editor = sharedPreferences.edit();
         editor.putBoolean(KEEP_SCREEN_ON_KEY, isEnabled);
         editor.apply();
@@ -145,5 +160,11 @@ public class SettingsActivity extends AppCompatActivity {
     private void setVersionInfo() {
         String version = "Cronos v" + BuildConfig.VERSION_NAME;
         versionTextView.setText(version);
+    }
+
+    @Override
+    public void onDestroyView() {
+        super.onDestroyView();
+        binding = null;
     }
 }
