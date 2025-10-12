@@ -189,6 +189,12 @@ public class MapActivity extends AppCompatActivity {
         Log.d(TAG, "startTracking: start");
         isTracking = true;
 
+        // Initialize lastLocation with the current fix if available to start distance calculation immediately
+        if (myLocationOverlay.getLastFix() != null) {
+            lastLocation = myLocationOverlay.getLastFix();
+            Log.d(TAG, "startTracking: Initialized lastLocation");
+        }
+
         // Create new trail
         trail = new Polyline(mapView);
         trail.setColor(ContextCompat.getColor(this, R.color.green_primary));
@@ -277,6 +283,15 @@ public class MapActivity extends AppCompatActivity {
         super.onResume();
         if (mapView != null) {
             mapView.onResume();
+        }
+        // Re-register for location updates if tracking is enabled
+        if (isTracking) {
+            try {
+                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 5000, 10, locationListener);
+                Log.d(TAG, "onResume: Re-requested location updates.");
+            } catch (SecurityException e) {
+                Log.e(TAG, "Location permission not granted for requesting updates", e);
+            }
         }
         Log.d(TAG, "onResume: map resumed");
     }
