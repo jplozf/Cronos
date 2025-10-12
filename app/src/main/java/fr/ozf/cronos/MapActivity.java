@@ -19,9 +19,11 @@ import org.osmdroid.tileprovider.tilesource.TileSourceFactory;
 import org.osmdroid.util.GeoPoint;
 import org.osmdroid.views.MapView;
 import org.osmdroid.views.overlay.Polyline;
+import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider;
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay;
 import android.preference.PreferenceManager;
+import android.view.View;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -88,6 +90,14 @@ public class MapActivity extends AppCompatActivity {
         if (shouldStartTracking) {
             startTracking();
         }
+        
+        FloatingActionButton fabRecenter = findViewById(R.id.fab_recenter);
+        fabRecenter.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                recenterMapOnUserLocation();
+            }
+        });
         
         Log.d(TAG, "onCreate: end");
     }
@@ -185,6 +195,12 @@ public class MapActivity extends AppCompatActivity {
             }
         }
         Log.d(TAG, "stopTracking: end");
+    }
+    
+    private void recenterMapOnUserLocation() {
+        if (myLocationOverlay != null && myLocationOverlay.getMyLocation() != null) {
+            mapView.getController().animateTo(myLocationOverlay.getMyLocation());
+        }
     }
     
     @Override

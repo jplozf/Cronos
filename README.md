@@ -64,15 +64,12 @@ To build and run Cronos on your Android device or emulator, follow these steps:
 *   **Delete Session:** Long-press on any training session item to bring up a confirmation dialog to delete it from your history.
 
 ### Settings Tab
-*   **Default Ringtone:** Select a default notification sound for your timers.
+*   **Keep Screen On:** Prevent the screen from turning off during active training sessions.
 *   **Test Sound:** Use the "Test Sound" button to preview your selected ringtone.
 *   **Countdown Beep:** Enable/disable a short beep sound in the last few seconds of a timer.
-*   **Keep Screen On:** Prevent the screen from turning off during active training sessions.
 *   **Halfway Warning:** Enable/disable a vocal warning ("Time to go back") at the halfway point of your total training session duration.
-
-## Credits
-*   **[Your Name/Alias]**: For the original vision and core concept of Cronos.
-*   **Gemini CLI Agent**: For assistance with feature development, bug fixes, and code improvements.
+*   **Default Ringtone:** Select a default notification sound for your timers.
+* 
 
 ## License
-*(Consider adding a license here, e.g., MIT, Apache 2.0, if you plan to open-source your project.)*
+This project is licensed under the GNU General Public License - see the [LICENSE.md](LICENSE.md) file for details.
