@@ -25,15 +25,16 @@ Cronos is an Android application designed for outdoor fitness enthusiasts. It fu
 
 ## Installation and Setup
 
-To build and run Cronos on your Android device or emulator, follow these steps:
+The binary of the last generated application is available for download at: [https://github.com/jplozf/Cronos/releases](https://github.com/jplozf/Cronos/releases).
+
+If you prefer to build and run Cronos on your Android device or emulator, follow these steps:
 
 1.  **Clone the Repository:**
     ```bash
-    git clone https://github.com/your-username/Cronos.git
+    git clone https://github.com/jplozf/Cronos.git
     cd Cronos
     ```
-    *(Note: Replace `https://github.com/your-username/Cronos.git` with the actual repository URL if it's hosted.)*
-
+    
 2.  **Open in Android Studio:**
     *   Launch Android Studio.
     *   Select `File > Open` and navigate to the cloned `Cronos` directory.
@@ -69,7 +70,6 @@ To build and run Cronos on your Android device or emulator, follow these steps:
 *   **Countdown Beep:** Enable/disable a short beep sound in the last few seconds of a timer.
 *   **Halfway Warning:** Enable/disable a vocal warning ("Time to go back") at the halfway point of your total training session duration.
 *   **Default Ringtone:** Select a default notification sound for your timers.
-* 
 
 ## License
 This project is licensed under the GNU General Public License - see the [LICENSE.md](LICENSE.md) file for details.
