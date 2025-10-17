@@ -77,14 +77,14 @@ public class MapActivity extends AppCompatActivity {
                     GeoPoint newPoint = new GeoPoint(location.getLatitude(), location.getLongitude());
                     trackedPoints.add(newPoint);
                     trail.addPoint(newPoint);
-                    mapView.invalidate(); // Redraw the map
 
                     if (lastLocation != null) {
-                        double distance = lastLocation.distanceTo(location) / 1000.0; // in kilometers
-                        totalDistanceKm += distance;
+                        float distance = lastLocation.distanceTo(location); // distance in meters
+                        totalDistanceKm += distance / 1000.0; // convert to kilometers
                         Log.d(TAG, "Distance updated: " + totalDistanceKm + " km");
                     }
                     lastLocation = location;
+                    mapView.invalidate();
                 }
             }
         };
@@ -118,15 +118,29 @@ public class MapActivity extends AppCompatActivity {
         mapView.setTileSource(TileSourceFactory.MAPNIK);
         mapView.setBuiltInZoomControls(true);
         mapView.setMultiTouchControls(true);
-
-        // Set zoom and center to Paris (you can make this configurable)
         mapView.getController().setZoom(15.0);
-        mapView.getController().setCenter(new GeoPoint(48.8583, 2.2945));
 
         // Request location permission if not granted
         if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION}, LOCATION_PERMISSION_REQUEST_CODE);
         } else {
+            // Center map on last known location
+            Location lastKnownLocation = null;
+            try {
+                lastKnownLocation = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+                if (lastKnownLocation == null) {
+                    lastKnownLocation = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
+                }
+            } catch (SecurityException e) {
+                Log.e(TAG, "Location permission not granted for getting last known location", e);
+            }
+
+            if (lastKnownLocation != null) {
+                mapView.getController().setCenter(new GeoPoint(lastKnownLocation.getLatitude(), lastKnownLocation.getLongitude()));
+            } else {
+                // Fallback to Paris if no location is available
+                mapView.getController().setCenter(new GeoPoint(48.8583, 2.2945));
+            }
             setupLocationOverlay();
         }
 
@@ -181,49 +195,46 @@ public class MapActivity extends AppCompatActivity {
     }
 
     private void startTracking() {
-        if (mapView == null || myLocationOverlay == null) {
-            Log.e(TAG, "startTracking: map or location overlay is null");
-            return;
-        }
-
-        Log.d(TAG, "startTracking: start");
+        Log.d(TAG, "startTracking called");
         isTracking = true;
-
+        trackedPoints.clear();
+        totalDistanceKm = 0.0;
+        
         // Initialize lastLocation with the current fix if available to start distance calculation immediately
-        if (myLocationOverlay.getLastFix() != null) {
+        if (myLocationOverlay != null && myLocationOverlay.getLastFix() != null) {
             lastLocation = myLocationOverlay.getLastFix();
             Log.d(TAG, "startTracking: Initialized lastLocation");
+        } else {
+            lastLocation = null;
         }
 
-        // Create new trail
-        trail = new Polyline(mapView);
+        trail = new Polyline();
         trail.setColor(ContextCompat.getColor(this, R.color.green_primary));
         trail.setWidth(10f);
+        mapView.getOverlays().add(trail);
 
-        // Add initial point to prevent null LinearRing issues
-        if (myLocationOverlay.getLastFix() != null) {
-            GeoPoint currentLocation = new GeoPoint(myLocationOverlay.getLastFix());
-            trail.addPoint(currentLocation);
-            Log.d(TAG, "startTracking: Added initial point to trail");
-        } else {
-            // Add map center as fallback
-            GeoPoint center = (GeoPoint) mapView.getMapCenter();
-            trail.addPoint(center);
-            Log.d(TAG, "startTracking: Added map center as initial point");
+        if (myLocationOverlay != null) {
+            myLocationOverlay.enableFollowLocation();
         }
 
-        mapView.getOverlays().add(trail);
-        myLocationOverlay.enableFollowLocation();
-
-        // Request location updates
+        // Request location updates from the best available provider
         try {
-            locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 5000, 10, locationListener);
-            Log.d(TAG, "startTracking: requested GPS location updates");
+            String provider = null;
+            if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+                provider = LocationManager.GPS_PROVIDER;
+            } else if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+                provider = LocationManager.NETWORK_PROVIDER;
+            }
+
+            if (provider != null) {
+                locationManager.requestLocationUpdates(provider, 2000, 5, locationListener);
+                Log.d(TAG, "Requested location updates from " + provider);
+            } else {
+                Log.w(TAG, "No location provider enabled.");
+            }
         } catch (SecurityException e) {
             Log.e(TAG, "Location permission not granted for requesting updates", e);
         }
-
-        Log.d(TAG, "startTracking: tracking enabled");
     }
 
     public void stopTracking() {
@@ -287,8 +298,16 @@ public class MapActivity extends AppCompatActivity {
         // Re-register for location updates if tracking is enabled
         if (isTracking) {
             try {
-                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 5000, 10, locationListener);
-                Log.d(TAG, "onResume: Re-requested location updates.");
+                String provider = null;
+                if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+                    provider = LocationManager.GPS_PROVIDER;
+                } else if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+                    provider = LocationManager.NETWORK_PROVIDER;
+                }
+                if (provider != null) {
+                    locationManager.requestLocationUpdates(provider, 2000, 5, locationListener);
+                    Log.d(TAG, "onResume: Re-requested location updates from " + provider);
+                }
             } catch (SecurityException e) {
                 Log.e(TAG, "Location permission not granted for requesting updates", e);
             }
