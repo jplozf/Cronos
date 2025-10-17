@@ -85,6 +85,7 @@ public class HomeFragment extends Fragment implements TimerAdapter.OnTimerClickL
     private int editingTimerPosition = -1;
     private long sessionStartTime = 0;
     private boolean halfwayWarningGiven = false;
+    private boolean isTrainingSessionFinished = false;
 
     private Gson gson = new Gson();
     private Handler handler = new Handler(Looper.getMainLooper());
@@ -183,7 +184,7 @@ public class HomeFragment extends Fragment implements TimerAdapter.OnTimerClickL
 
 
         // Setup map button
-        Button openMapButton = root.findViewById(R.id.button_open_map);
+        View openMapButton = root.findViewById(R.id.fab_open_map);
         openMapButton.setOnClickListener(v -> openMapActivity());
 
         Log.d(TAG, "onCreateView: end");
@@ -334,6 +335,7 @@ public class HomeFragment extends Fragment implements TimerAdapter.OnTimerClickL
                 Log.d(TAG, "Moving to next round: " + currentRound + ", starting timer at index: " + currentTimerIndex);
             } else {
                 Log.d(TAG, "All rounds and timers finished.");
+                isTrainingSessionFinished = true;
                 resetSession();
                 Toast.makeText(requireContext(), "All rounds completed!", Toast.LENGTH_LONG).show();
 
@@ -386,7 +388,10 @@ public class HomeFragment extends Fragment implements TimerAdapter.OnTimerClickL
                 double distance = data.getDoubleExtra("total_distance_km", 0.0);
                 Log.d(TAG, "Received distance from MapActivity: " + distance + " km");
                 // Update the last saved training session with the actual distance
-                updateLastTrainingSessionDistance(distance);
+                if (isTrainingSessionFinished) {
+                    updateLastTrainingSessionDistance(distance);
+                    isTrainingSessionFinished = false; // Reset the flag
+                }
             }
         }
     }
@@ -533,6 +538,7 @@ public class HomeFragment extends Fragment implements TimerAdapter.OnTimerClickL
         currentRound = 1;
         currentTimerIndex = 0;
         halfwayWarningGiven = false; // Reset halfway warning flag
+        isTrainingSessionFinished = false; // Reset the training session finished flag
         updateRoundDisplay();
         timerAdapter.setRunningTimerPosition(-1);
         timerAdapter.notifyDataSetChanged();
