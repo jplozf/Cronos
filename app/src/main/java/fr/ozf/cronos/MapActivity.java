@@ -67,9 +67,8 @@ public class MapActivity extends AppCompatActivity {
 
         // Initialize map
         mapView = findViewById(R.id.map_view);
-        initializeMap();
-
         locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
+        initializeMap();
         locationListener = new LocationListener() {
             @Override
             public void onLocationChanged(@NonNull Location location) {
