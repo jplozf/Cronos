@@ -305,14 +305,19 @@ public class MainActivity extends AppCompatActivity {
         SharedPreferences.Editor editor = sharedPreferences.edit();
 
         // Get the current HomeFragment to retrieve its timerList and other state
-        HomeFragment homeFragment = (HomeFragment) getSupportFragmentManager().findFragmentByTag("f" + viewPager.getCurrentItem());
-        if (homeFragment != null) {
-            String timerListJson = gson.toJson(homeFragment.getTimerList()); // Assuming getTimerList() exists in HomeFragment
+        Fragment currentFragment = getSupportFragmentManager().findFragmentByTag("f" + viewPager.getCurrentItem());
+        if (currentFragment instanceof HomeFragment) {
+            HomeFragment homeFragment = (HomeFragment) currentFragment;
+            String timerListJson = gson.toJson(homeFragment.getTimerList());
             editor.putString(schemeName + "_" + TIMER_LIST_KEY, timerListJson);
 
-            editor.putInt(schemeName + "_" + CURRENT_ROUND_KEY, homeFragment.getCurrentRound()); // Assuming getCurrentRound() exists
-            editor.putInt(schemeName + "_" + TOTAL_ROUNDS_KEY, homeFragment.getTotalRounds()); // Assuming getTotalRounds() exists
-            editor.putInt(schemeName + "_" + CURRENT_TIMER_INDEX_KEY, homeFragment.getCurrentTimerIndex()); // Assuming getCurrentTimerIndex() exists
+            editor.putInt(schemeName + "_" + CURRENT_ROUND_KEY, homeFragment.getCurrentRound());
+            editor.putInt(schemeName + "_" + TOTAL_ROUNDS_KEY, homeFragment.getTotalRounds());
+            editor.putInt(schemeName + "_" + CURRENT_TIMER_INDEX_KEY, homeFragment.getCurrentTimerIndex());
+        } else {
+            Log.e("MainActivity", "Attempted to save scheme from a non-HomeFragment: " + currentFragment.getClass().getSimpleName());
+            Toast.makeText(this, "Cannot save scheme from this tab. Please switch to Training tab.", Toast.LENGTH_LONG).show();
+            return; // Exit the method if not on HomeFragment
         }
 
         Set<String> schemeNames = sharedPreferences.getStringSet(SCHEME_NAMES_KEY, new HashSet<>());
@@ -334,15 +339,19 @@ public class MainActivity extends AppCompatActivity {
         int loadedCurrentTimerIndex = sharedPreferences.getInt(schemeName + "_" + CURRENT_TIMER_INDEX_KEY, 0);
 
         // Update the HomeFragment with the loaded data
-        HomeFragment homeFragment = (HomeFragment) getSupportFragmentManager().findFragmentByTag("f" + viewPager.getCurrentItem());
-        if (homeFragment != null) {
-            homeFragment.setTimers(loadedTimerList); // Assuming setTimers() exists in HomeFragment
-            homeFragment.setCurrentRound(loadedCurrentRound); // Assuming setCurrentRound() exists
-            homeFragment.setTotalRounds(loadedTotalRounds); // Assuming getTotalRounds() exists
+        Fragment currentFragment = getSupportFragmentManager().findFragmentByTag("f" + viewPager.getCurrentItem());
+        if (currentFragment instanceof HomeFragment) {
+            HomeFragment homeFragment = (HomeFragment) currentFragment;
+            homeFragment.setTimers(loadedTimerList);
+            homeFragment.setCurrentRound(loadedCurrentRound);
+            homeFragment.setTotalRounds(loadedTotalRounds);
             homeFragment.setCurrentTimerIndex(loadedCurrentTimerIndex);
             homeFragment.updateRoundDisplay();
             homeFragment.updateTotalDurationDisplay();
             homeFragment.resetSession(); // Reset session to apply new scheme
+        } else {
+            Log.e("MainActivity", "Attempted to load scheme on a non-HomeFragment: " + currentFragment.getClass().getSimpleName());
+            Toast.makeText(this, "Cannot load scheme on this tab. Please switch to Training tab.", Toast.LENGTH_LONG).show();
         }
     }
 
