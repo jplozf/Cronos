@@ -40,13 +40,9 @@ public class MapActivity extends AppCompatActivity {
     private MapView mapView;
     private MyLocationNewOverlay myLocationOverlay;
     private Polyline trail;
-    private boolean isTracking = false;
 
     private LocationManager locationManager;
-    private LocationListener locationListener;
-    private Location lastLocation;
-    private double totalDistanceKm = 0.0;
-    private List<GeoPoint> trackedPoints = new ArrayList<>();
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -69,30 +65,7 @@ public class MapActivity extends AppCompatActivity {
         mapView = findViewById(R.id.map_view);
         locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
         initializeMap();
-        locationListener = new LocationListener() {
-            @Override
-            public void onLocationChanged(@NonNull Location location) {
-                if (isTracking) {
-                    GeoPoint newPoint = new GeoPoint(location.getLatitude(), location.getLongitude());
-                    trackedPoints.add(newPoint);
-                    trail.addPoint(newPoint);
 
-                    if (lastLocation != null) {
-                        float distance = lastLocation.distanceTo(location); // distance in meters
-                        totalDistanceKm += distance / 1000.0; // convert to kilometers
-                        Log.d(TAG, "Distance updated: " + totalDistanceKm + " km");
-                    }
-                    lastLocation = location;
-                    mapView.invalidate();
-                }
-            }
-        };
-
-        // Check if tracking should be started based on intent extras
-        boolean shouldStartTracking = getIntent().getBooleanExtra("start_tracking", false);
-        if (shouldStartTracking) {
-            startTracking();
-        }
 
         FloatingActionButton fabRecenter = findViewById(R.id.fab_recenter);
         fabRecenter.setOnClickListener(new View.OnClickListener() {
@@ -111,6 +84,13 @@ public class MapActivity extends AppCompatActivity {
             return;
         }
 
+        if (locationManager == null) {
+            Log.e(TAG, "initializeMap: locationManager is null. Cannot get last known location.");
+            // Fallback to Paris if locationManager is not available
+            mapView.getController().setCenter(new GeoPoint(48.8583, 2.2945));
+            return;
+        }
+
         Log.d(TAG, "initializeMap: start");
 
         // Basic map setup
@@ -126,8 +106,10 @@ public class MapActivity extends AppCompatActivity {
             // Center map on last known location
             Location lastKnownLocation = null;
             try {
-                lastKnownLocation = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
-                if (lastKnownLocation == null) {
+                if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+                    lastKnownLocation = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+                }
+                if (lastKnownLocation == null && locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
                     lastKnownLocation = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
                 }
             } catch (SecurityException e) {
@@ -193,70 +175,6 @@ public class MapActivity extends AppCompatActivity {
         Log.d(TAG, "setupLocationOverlay: location overlay added");
     }
 
-    private void startTracking() {
-        Log.d(TAG, "startTracking called");
-        isTracking = true;
-        trackedPoints.clear();
-        totalDistanceKm = 0.0;
-        
-        // Initialize lastLocation with the current fix if available to start distance calculation immediately
-        if (myLocationOverlay != null && myLocationOverlay.getLastFix() != null) {
-            lastLocation = myLocationOverlay.getLastFix();
-            Log.d(TAG, "startTracking: Initialized lastLocation");
-        } else {
-            lastLocation = null;
-        }
-
-        trail = new Polyline();
-        trail.setColor(ContextCompat.getColor(this, R.color.green_primary));
-        trail.setWidth(10f);
-        mapView.getOverlays().add(trail);
-
-        if (myLocationOverlay != null) {
-            myLocationOverlay.enableFollowLocation();
-        }
-
-        // Request location updates from the best available provider
-        try {
-            String provider = null;
-            if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-                provider = LocationManager.GPS_PROVIDER;
-            } else if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
-                provider = LocationManager.NETWORK_PROVIDER;
-            }
-
-            if (provider != null) {
-                locationManager.requestLocationUpdates(provider, 2000, 5, locationListener);
-                Log.d(TAG, "Requested location updates from " + provider);
-            } else {
-                Log.w(TAG, "No location provider enabled.");
-            }
-        } catch (SecurityException e) {
-            Log.e(TAG, "Location permission not granted for requesting updates", e);
-        }
-    }
-
-    public void stopTracking() {
-        Log.d(TAG, "stopTracking: start");
-        isTracking = false;
-        if (myLocationOverlay != null) {
-            myLocationOverlay.disableFollowLocation();
-        }
-        if (locationManager != null && locationListener != null) {
-            locationManager.removeUpdates(locationListener);
-            Log.d(TAG, "stopTracking: removed location updates");
-        }
-        if (mapView != null && trail != null) {
-            try {
-                mapView.getOverlays().remove(trail);
-                Log.d(TAG, "stopTracking: Trail removed from overlays");
-            } catch (Exception e) {
-                Log.e(TAG, "Error removing trail overlay", e);
-            }
-        }
-        Log.d(TAG, "stopTracking: end");
-    }
-
     private void recenterMapOnUserLocation() {
         if (myLocationOverlay != null && myLocationOverlay.getMyLocation() != null) {
             mapView.getController().animateTo(myLocationOverlay.getMyLocation());
@@ -278,10 +196,6 @@ public class MapActivity extends AppCompatActivity {
     @Override
     public boolean onOptionsItemSelected(@NonNull MenuItem item) {
         if (item.getItemId() == android.R.id.home) {
-            stopTracking(); // Ensure tracking is stopped before finishing
-            Intent resultIntent = new Intent();
-            resultIntent.putExtra("total_distance_km", totalDistanceKm);
-            setResult(RESULT_OK, resultIntent);
             finish();
             return true;
         }
@@ -294,23 +208,6 @@ public class MapActivity extends AppCompatActivity {
         if (mapView != null) {
             mapView.onResume();
         }
-        // Re-register for location updates if tracking is enabled
-        if (isTracking) {
-            try {
-                String provider = null;
-                if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-                    provider = LocationManager.GPS_PROVIDER;
-                } else if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
-                    provider = LocationManager.NETWORK_PROVIDER;
-                }
-                if (provider != null) {
-                    locationManager.requestLocationUpdates(provider, 2000, 5, locationListener);
-                    Log.d(TAG, "onResume: Re-requested location updates from " + provider);
-                }
-            } catch (SecurityException e) {
-                Log.e(TAG, "Location permission not granted for requesting updates", e);
-            }
-        }
         Log.d(TAG, "onResume: map resumed");
     }
 
@@ -319,10 +216,6 @@ public class MapActivity extends AppCompatActivity {
         super.onPause();
         if (mapView != null) {
             mapView.onPause();
-        }
-        if (locationManager != null && locationListener != null) {
-            locationManager.removeUpdates(locationListener);
-            Log.d(TAG, "onPause: removed location updates");
         }
         Log.d(TAG, "onPause: map paused");
     }
@@ -336,10 +229,6 @@ public class MapActivity extends AppCompatActivity {
                 myLocationOverlay.disableMyLocation();
             }
             mapView.onDetach();
-        }
-        if (locationManager != null && locationListener != null) {
-            locationManager.removeUpdates(locationListener);
-            Log.d(TAG, "onDestroy: removed location updates");
         }
         Log.d(TAG, "onDestroy: cleanup completed");
     }

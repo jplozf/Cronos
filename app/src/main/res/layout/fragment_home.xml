@@ -41,39 +41,53 @@
 
         <Button
             android:id="@+id/button_start_all"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_weight="1"
             android:drawableTop="@drawable/ic_play_arrow"
             android:text=""
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:padding="16dp"/>
+            android:padding="8dp"/>
 
         <Button
             android:id="@+id/button_pause_all"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_weight="1"
             android:drawableTop="@drawable/ic_pause"
             android:text=""
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:padding="16dp"/>
+            android:padding="8dp"/>
 
         <Button
             android:id="@+id/button_stop_all"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_weight="1"
             android:drawableTop="@drawable/ic_stop"
             android:text=""
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:padding="16dp"/>
+            android:padding="8dp"/>
 
         <Button
             android:id="@+id/button_reset_all"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_weight="1"
             android:drawableTop="@drawable/ic_replay"
             android:text=""
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:padding="16dp"/>
+            android:padding="8dp"/>
+
+        <Button
+            android:id="@+id/button_open_map"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:drawableTop="@drawable/ic_map_colored"
+            android:text=""
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:padding="8dp"/>
     </LinearLayout>
 
     <androidx.recyclerview.widget.RecyclerView
@@ -83,16 +97,5 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/timers_control_panel"
-        app:layout_constraintVertical_chainStyle="packed"
-        app:layout_constraintVertical_weight="1" />
-
-    <com.google.android.material.floatingactionbutton.FloatingActionButton
-        android:id="@+id/fab_open_map"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_margin="16dp"
-        android:src="@android:drawable/ic_dialog_map"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        app:layout_constraintTop_toBottomOf="@+id/timers_control_panel" />
 </androidx.constraintlayout.widget.ConstraintLayout>

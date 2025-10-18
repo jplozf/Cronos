@@ -40,6 +40,15 @@ import android.preference.PreferenceManager;
 
 import fr.ozf.cronos.databinding.ActivityMainBinding;
 
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
+import android.content.pm.PackageManager;
+import android.Manifest;
+
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
+import java.lang.reflect.Type;
+
 public class MainActivity extends AppCompatActivity {
 
     private static final String SHARED_PREFS_SCHEMES = "sharedPrefsSchemes";
@@ -49,6 +58,7 @@ public class MainActivity extends AppCompatActivity {
     private static final String CURRENT_ROUND_KEY = "currentRound";
     private static final String TOTAL_ROUNDS_KEY = "totalRounds";
     private static final String CURRENT_TIMER_INDEX_KEY = "currentTimerIndex";
+    private static final int LOCATION_PERMISSION_REQUEST_CODE = 1001;
 
     private ActivityMainBinding binding;
     private ViewPager2 viewPager;
@@ -124,6 +134,47 @@ public class MainActivity extends AppCompatActivity {
             }
         });
         Log.d("MainActivity", "onCreate: end");
+
+        checkLocationPermissions();
+    }
+
+    private void checkLocationPermissions() {
+        List<String> permissionsToRequest = new ArrayList<>();
+
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            permissionsToRequest.add(Manifest.permission.ACCESS_FINE_LOCATION);
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            permissionsToRequest.add(Manifest.permission.ACCESS_COARSE_LOCATION);
+        }
+        // For Android 14 (API level 34) and above, FOREGROUND_SERVICE_LOCATION is required for location foreground services.
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.FOREGROUND_SERVICE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                permissionsToRequest.add(Manifest.permission.FOREGROUND_SERVICE_LOCATION);
+            }
+        }
+
+        if (!permissionsToRequest.isEmpty()) {
+            ActivityCompat.requestPermissions(this,
+                    permissionsToRequest.toArray(new String[0]),
+                    LOCATION_PERMISSION_REQUEST_CODE);
+        } else {
+            Log.d("MainActivity", "Location permissions already granted.");
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == LOCATION_PERMISSION_REQUEST_CODE) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                Log.d("MainActivity", "Location permissions granted.");
+                Toast.makeText(this, "Location permissions granted", Toast.LENGTH_SHORT).show();
+            } else {
+                Log.w("MainActivity", "Location permissions denied.");
+                Toast.makeText(this, "Location permissions denied. Some features may not work.", Toast.LENGTH_LONG).show();
+            }
+        }
     }
 
     @Override
@@ -189,7 +240,7 @@ public class MainActivity extends AppCompatActivity {
             if (!schemeName.isEmpty()) {
                 Fragment currentFragment = getSupportFragmentManager().findFragmentByTag("f" + viewPager.getCurrentItem());
                 if (currentFragment instanceof HomeFragment) {
-                    ((HomeFragment) currentFragment).saveScheme(schemeName);
+                    saveScheme(schemeName);
                     currentSchemeName = schemeName; // Update current scheme name after saving
                     updateTitleBar(); // Update title bar after saving
                     // Save current scheme name to shared preferences
@@ -222,18 +273,15 @@ public class MainActivity extends AppCompatActivity {
 
         schemeListView.setOnItemClickListener((parent, view, position, id) -> {
             String selectedSchemeName = schemeNames.get(position);
-            Fragment currentFragment = getSupportFragmentManager().findFragmentByTag("f" + viewPager.getCurrentItem());
-            if (currentFragment instanceof HomeFragment) {
-                ((HomeFragment) currentFragment).loadScheme(selectedSchemeName);
-                currentSchemeName = selectedSchemeName; // Update current scheme name after loading
-                updateTitleBar(); // Update title bar after loading
-                // Save current scheme name to shared preferences
-                SharedPreferences sharedPreferences = getSharedPreferences(SHARED_PREFS_SCHEMES, MODE_PRIVATE);
-                SharedPreferences.Editor editor = sharedPreferences.edit();
-                editor.putString(CURRENT_SCHEME_NAME_KEY, currentSchemeName);
-                editor.apply();
-                Toast.makeText(this, "Scheme '" + selectedSchemeName + "' loaded", Toast.LENGTH_SHORT).show();
-            }
+            loadScheme(selectedSchemeName);
+            currentSchemeName = selectedSchemeName; // Update current scheme name after loading
+            updateTitleBar(); // Update title bar after loading
+            // Save current scheme name to shared preferences
+            SharedPreferences sharedPreferences = getSharedPreferences(SHARED_PREFS_SCHEMES, MODE_PRIVATE);
+            SharedPreferences.Editor editor = sharedPreferences.edit();
+            editor.putString(CURRENT_SCHEME_NAME_KEY, currentSchemeName);
+            editor.apply();
+            Toast.makeText(this, "Scheme '" + selectedSchemeName + "' loaded", Toast.LENGTH_SHORT).show();
             // Dismiss the dialog after loading
             ((AlertDialog) parent.getTag()).dismiss();
         });
@@ -245,6 +293,57 @@ public class MainActivity extends AppCompatActivity {
         schemeListView.setTag(alertDialog); // Store dialog in tag to dismiss it from item click listener
         alertDialog.show();
         Log.d("MainActivity", "showLoadSchemeDialog: end");
+    }
+
+    public String getCurrentSchemeName() {
+        return currentSchemeName;
+    }
+
+    // Methods for scheme management
+    public void saveScheme(String schemeName) {
+        SharedPreferences sharedPreferences = getSharedPreferences(SHARED_PREFS_SCHEMES, MODE_PRIVATE);
+        SharedPreferences.Editor editor = sharedPreferences.edit();
+
+        // Get the current HomeFragment to retrieve its timerList and other state
+        HomeFragment homeFragment = (HomeFragment) getSupportFragmentManager().findFragmentByTag("f" + viewPager.getCurrentItem());
+        if (homeFragment != null) {
+            String timerListJson = gson.toJson(homeFragment.getTimerList()); // Assuming getTimerList() exists in HomeFragment
+            editor.putString(schemeName + "_" + TIMER_LIST_KEY, timerListJson);
+
+            editor.putInt(schemeName + "_" + CURRENT_ROUND_KEY, homeFragment.getCurrentRound()); // Assuming getCurrentRound() exists
+            editor.putInt(schemeName + "_" + TOTAL_ROUNDS_KEY, homeFragment.getTotalRounds()); // Assuming getTotalRounds() exists
+            editor.putInt(schemeName + "_" + CURRENT_TIMER_INDEX_KEY, homeFragment.getCurrentTimerIndex()); // Assuming getCurrentTimerIndex() exists
+        }
+
+        Set<String> schemeNames = sharedPreferences.getStringSet(SCHEME_NAMES_KEY, new HashSet<>());
+        schemeNames.add(schemeName);
+        editor.putStringSet(SCHEME_NAMES_KEY, schemeNames);
+
+        editor.apply();
+    }
+
+    public void loadScheme(String schemeName) {
+        SharedPreferences sharedPreferences = getSharedPreferences(SHARED_PREFS_SCHEMES, MODE_PRIVATE);
+
+        String timerListJson = sharedPreferences.getString(schemeName + "_" + TIMER_LIST_KEY, null);
+        Type type = new TypeToken<ArrayList<Timer>>() {}.getType();
+        List<Timer> loadedTimerList = gson.fromJson(timerListJson, type);
+
+        int loadedCurrentRound = sharedPreferences.getInt(schemeName + "_" + CURRENT_ROUND_KEY, 1);
+        int loadedTotalRounds = sharedPreferences.getInt(schemeName + "_" + TOTAL_ROUNDS_KEY, 10);
+        int loadedCurrentTimerIndex = sharedPreferences.getInt(schemeName + "_" + CURRENT_TIMER_INDEX_KEY, 0);
+
+        // Update the HomeFragment with the loaded data
+        HomeFragment homeFragment = (HomeFragment) getSupportFragmentManager().findFragmentByTag("f" + viewPager.getCurrentItem());
+        if (homeFragment != null) {
+            homeFragment.setTimers(loadedTimerList); // Assuming setTimers() exists in HomeFragment
+            homeFragment.setCurrentRound(loadedCurrentRound); // Assuming setCurrentRound() exists
+            homeFragment.setTotalRounds(loadedTotalRounds); // Assuming getTotalRounds() exists
+            homeFragment.setCurrentTimerIndex(loadedCurrentTimerIndex);
+            homeFragment.updateRoundDisplay();
+            homeFragment.updateTotalDurationDisplay();
+            homeFragment.resetSession(); // Reset session to apply new scheme
+        }
     }
 
     private Set<String> getSavedSchemeNames() {

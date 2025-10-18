@@ -1,10 +1,11 @@
 package fr.ozf.cronos;
 
 import android.app.Activity;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
-import android.content.pm.PackageManager;
 import android.media.AudioManager;
 import android.media.MediaPlayer;
 import android.media.Ringtone;
@@ -22,7 +23,6 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
-import android.widget.LinearLayout;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -31,6 +31,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
 import androidx.fragment.app.Fragment;
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -38,7 +39,6 @@ import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
 // Removed OSMDroid imports - map moved to separate activity
-import android.preference.PreferenceManager;
 
 import java.lang.reflect.Type;
 import java.util.ArrayList;
@@ -57,14 +57,11 @@ public class HomeFragment extends Fragment implements TimerAdapter.OnTimerClickL
     private static final String CURRENT_ROUND_KEY = "currentRound";
     private static final String TOTAL_ROUNDS_KEY = "totalRounds";
     private static final String CURRENT_TIMER_INDEX_KEY = "currentTimerIndex";
-    private static final String SHARED_PREFS_SCHEMES = "sharedPrefsSchemes";
-    private static final String SCHEME_NAMES_KEY = "schemeNames";
     private static final String CURRENT_SCHEME_NAME_KEY = "currentSchemeName";
     private static final String DEFAULT_RINGTONE_URI_KEY = "defaultRingtoneUri";
     private static final String COUNTDOWN_BEEP_KEY = "countdownBeepEnabled";
     private static final String KEEP_SCREEN_ON_KEY = "keepScreenOn";
     private static final int RINGTONE_PICKER_REQUEST_CODE = 2;
-    private static final int LOCATION_PERMISSION_REQUEST_CODE = 1;
     private static final int MAP_ACTIVITY_REQUEST_CODE = 3;
 
     private static final String TAG = "HomeFragment";
@@ -81,17 +78,19 @@ public class HomeFragment extends Fragment implements TimerAdapter.OnTimerClickL
     private int currentRound = 1;
     private int totalRounds = 10;
     private int currentTimerIndex = 0;
-    private String currentSchemeName = "Default";
     private int editingTimerPosition = -1;
     private long sessionStartTime = 0;
     private boolean halfwayWarningGiven = false;
     private boolean isTrainingSessionFinished = false;
+    private double lastTrackedDistanceKm = 0.0;
+    private boolean shouldSaveSessionOnDistanceReceive = false;
 
     private Gson gson = new Gson();
     private Handler handler = new Handler(Looper.getMainLooper());
     private Runnable timerRunnable;
     private TextToSpeech textToSpeech;
     private ToneGenerator toneGenerator;
+    private BroadcastReceiver distanceReceiver;
 
     // Map moved to separate MapActivity
 
@@ -142,6 +141,7 @@ public class HomeFragment extends Fragment implements TimerAdapter.OnTimerClickL
         Button pauseButton = root.findViewById(R.id.button_pause_all);
         Button stopButton = root.findViewById(R.id.button_stop_all);
         Button resetButton = root.findViewById(R.id.button_reset_all);
+        Button openMapButton = root.findViewById(R.id.button_open_map);
 
         startButton.setOnClickListener(v -> startTimerAtIndex(currentTimerIndex));
         pauseButton.setOnClickListener(v -> {
@@ -161,8 +161,19 @@ public class HomeFragment extends Fragment implements TimerAdapter.OnTimerClickL
                 timerAdapter.notifyItemChanged(currentTimerIndex);
             }
             timerAdapter.setRunningTimerPosition(-1);
+
+            // If a session was running, indicate that it should be saved when distance is received.
+            if (sessionStartTime != 0) {
+                shouldSaveSessionOnDistanceReceive = true;
+                Log.d(TAG, "DIAGNOSTIC: Stop button clicked. Setting shouldSaveSessionOnDistanceReceive to true.");
+            }
+            // Stop the location service
+            Intent serviceIntent = new Intent(requireContext(), LocationService.class);
+            serviceIntent.setAction(LocationService.ACTION_STOP_SERVICE);
+            requireContext().startService(serviceIntent);
         });
         resetButton.setOnClickListener(v -> resetSession());
+        openMapButton.setOnClickListener(v -> openMapActivity());
 
         roundDisplayTextView.setOnClickListener(v -> showSetTotalRoundsDialog());
 
@@ -181,11 +192,40 @@ public class HomeFragment extends Fragment implements TimerAdapter.OnTimerClickL
         // Initialize ToneGenerator
         toneGenerator = new ToneGenerator(AudioManager.STREAM_ALARM, 100);
 
+        distanceReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                lastTrackedDistanceKm = intent.getDoubleExtra(LocationService.EXTRA_TOTAL_DISTANCE_KM, 0.0);
+                Log.d(TAG, "DIAGNOSTIC: BroadcastReceiver - Received final distance: " + lastTrackedDistanceKm + " km");
 
+                if (shouldSaveSessionOnDistanceReceive) {
+                    long sessionDuration = 0;
+                    if (sessionStartTime != 0) {
+                        sessionDuration = System.currentTimeMillis() - sessionStartTime;
+                    }
 
-        // Setup map button
-        View openMapButton = root.findViewById(R.id.fab_open_map);
-        openMapButton.setOnClickListener(v -> openMapActivity());
+                    double meanSpeedKmH = 0.0;
+                    if (sessionDuration > 0) {
+                        // Convert sessionDuration from milliseconds to hours
+                        double sessionDurationHours = sessionDuration / (1000.0 * 60 * 60);
+                        Log.d(TAG, "DIAGNOSTIC: lastTrackedDistanceKm: " + lastTrackedDistanceKm + ", sessionDuration: " + sessionDuration + ", sessionDurationHours: " + sessionDurationHours);
+                        if (sessionDurationHours > 0) {
+                            meanSpeedKmH = lastTrackedDistanceKm / sessionDurationHours;
+                        }
+                    }
+
+                    saveTrainingSession(((MainActivity) requireActivity()).getCurrentSchemeName(), lastTrackedDistanceKm, sessionDuration, meanSpeedKmH);
+                    Toast.makeText(requireContext(), "Training session stopped and saved.", Toast.LENGTH_SHORT).show();
+
+                    sessionStartTime = 0; // Reset for the next session
+                    lastTrackedDistanceKm = 0.0; // Reset cached distance
+                    shouldSaveSessionOnDistanceReceive = false; // Reset the flag
+                    Log.d(TAG, "DIAGNOSTIC: Session saved after receiving final distance broadcast.");
+                }
+            }
+        };
+        LocalBroadcastManager.getInstance(requireContext()).registerReceiver(distanceReceiver, new IntentFilter(LocationService.DISTANCE_BROADCAST));
+
 
         Log.d(TAG, "onCreateView: end");
         return root;
@@ -246,6 +286,9 @@ public class HomeFragment extends Fragment implements TimerAdapter.OnTimerClickL
         if (toneGenerator != null) {
             toneGenerator.release();
             toneGenerator = null;
+        }
+        if (distanceReceiver != null) {
+            LocalBroadcastManager.getInstance(requireContext()).unregisterReceiver(distanceReceiver);
         }
         // Map moved to separate activity
         binding = null;
@@ -339,17 +382,13 @@ public class HomeFragment extends Fragment implements TimerAdapter.OnTimerClickL
                 resetSession();
                 Toast.makeText(requireContext(), "All rounds completed!", Toast.LENGTH_LONG).show();
 
-                long sessionDuration = 0;
-                if (sessionStartTime != 0) {
-                    sessionDuration = System.currentTimeMillis() - sessionStartTime;
-                    sessionStartTime = 0; // Reset for next session
-                }
+                shouldSaveSessionOnDistanceReceive = true;
+                Log.d(TAG, "DIAGNOSTIC: All rounds finished. Setting shouldSaveSessionOnDistanceReceive to true.");
 
-                // Placeholder for mean speed, will be updated after MapActivity returns distance
-                double meanSpeedKmH = 0.0;
-
-                // Save training session when all rounds are completed
-                saveTrainingSession(currentSchemeName, 0.0, sessionDuration, meanSpeedKmH); // Distance and speed will be updated from MapActivity
+                // Stop the location service
+                Intent serviceIntent = new Intent(requireContext(), LocationService.class);
+                serviceIntent.setAction(LocationService.ACTION_STOP_SERVICE);
+                requireContext().startService(serviceIntent);
 
                 MediaPlayer mediaPlayer = MediaPlayer.create(requireContext(), R.raw.tada);
                 if (mediaPlayer != null) {
@@ -385,13 +424,8 @@ public class HomeFragment extends Fragment implements TimerAdapter.OnTimerClickL
             }
         } else if (requestCode == MAP_ACTIVITY_REQUEST_CODE && resultCode == Activity.RESULT_OK) {
             if (data != null) {
-                double distance = data.getDoubleExtra("total_distance_km", 0.0);
-                Log.d(TAG, "Received distance from MapActivity: " + distance + " km");
-                // Update the last saved training session with the actual distance
-                if (isTrainingSessionFinished) {
-                    updateLastTrainingSessionDistance(distance);
-                    isTrainingSessionFinished = false; // Reset the flag
-                }
+                lastTrackedDistanceKm = data.getDoubleExtra("total_distance_km", 0.0);
+                Log.d(TAG, "DIAGNOSTIC: onActivityResult - Received and cached distance: " + lastTrackedDistanceKm + " km");
             }
         }
     }
@@ -519,8 +553,8 @@ public class HomeFragment extends Fragment implements TimerAdapter.OnTimerClickL
         Toast.makeText(requireContext(), "Timer added", Toast.LENGTH_SHORT).show();
     }
 
-    private void resetSession() {
-        Log.d(TAG, "resetSession called.");
+    public void resetSession() {
+        Log.d(TAG, "DIAGNOSTIC: resetSession called.");
         // Tracking moved to MapActivity
         handler.removeCallbacks(timerRunnable);
         timerRunnable = null; // Ensure runnable is nulled out
@@ -572,10 +606,15 @@ public class HomeFragment extends Fragment implements TimerAdapter.OnTimerClickL
         timerAdapter.setRunningTimerPosition(currentTimerIndex);
         Log.d(TAG, "currentTimerIndex set to: " + currentTimerIndex);
 
-        if (currentRound == 1 && currentTimerIndex == 0 && sessionStartTime == 0) {
+        if (currentRound == 1 && currentTimerIndex == 0) {
             sessionStartTime = System.currentTimeMillis();
             halfwayWarningGiven = false; // Reset halfway warning flag for a new session
             Log.d(TAG, "Session start time recorded: " + sessionStartTime);
+
+            // Start the location service
+            Intent serviceIntent = new Intent(requireContext(), LocationService.class);
+            requireContext().startService(serviceIntent);
+            Log.d(TAG, "DIAGNOSTIC: LocationService started.");
         }
 
         // Tracking moved to MapActivity - removed isTracking check
@@ -666,11 +705,11 @@ public class HomeFragment extends Fragment implements TimerAdapter.OnTimerClickL
         }
     }
 
-    private void updateRoundDisplay() {
+    public void updateRoundDisplay() {
         roundDisplayTextView.setText(String.format(Locale.getDefault(), "Round %d / %d", currentRound, totalRounds));
     }
 
-    private void updateTotalDurationDisplay() {
+    public void updateTotalDurationDisplay() {
         long totalMillis = 0;
         for (Timer timer : timerList) {
             totalMillis += timer.getTotalTimeInMillis();
@@ -681,7 +720,7 @@ public class HomeFragment extends Fragment implements TimerAdapter.OnTimerClickL
         long minutes = TimeUnit.MILLISECONDS.toMinutes(totalMillis) - TimeUnit.HOURS.toMinutes(hours);
         long seconds = TimeUnit.MILLISECONDS.toSeconds(totalMillis) - TimeUnit.MINUTES.toSeconds(TimeUnit.MILLISECONDS.toMinutes(totalMillis));
 
-        String formattedDuration = String.format(Locale.getDefault(), "Total Duration: %02d:%02d:%02d", hours, minutes, seconds);
+        String formattedDuration = String.format(Locale.getDefault(), "%02d:%02d:%02d", hours, minutes, seconds);
         totalDurationTextView.setText(formattedDuration);
     }
 
@@ -694,7 +733,6 @@ public class HomeFragment extends Fragment implements TimerAdapter.OnTimerClickL
         editor.putInt(CURRENT_ROUND_KEY, currentRound);
         editor.putInt(TOTAL_ROUNDS_KEY, totalRounds);
         editor.putInt(CURRENT_TIMER_INDEX_KEY, currentTimerIndex);
-        editor.putString(CURRENT_SCHEME_NAME_KEY, currentSchemeName);
         editor.apply();
     }
 
@@ -707,7 +745,6 @@ public class HomeFragment extends Fragment implements TimerAdapter.OnTimerClickL
         currentRound = sharedPreferences.getInt(CURRENT_ROUND_KEY, 1);
         totalRounds = sharedPreferences.getInt(TOTAL_ROUNDS_KEY, 10);
         currentTimerIndex = sharedPreferences.getInt(CURRENT_TIMER_INDEX_KEY, 0);
-        currentSchemeName = sharedPreferences.getString(CURRENT_SCHEME_NAME_KEY, "Default");
 
         if (timerList != null) {
             for (Timer timer : timerList) {
@@ -720,6 +757,7 @@ public class HomeFragment extends Fragment implements TimerAdapter.OnTimerClickL
     }
 
     private void saveTrainingSession(String schemeName, double distanceKm, long durationMillis, double meanSpeedKmH) {
+        Log.d(TAG, "DIAGNOSTIC: saveTrainingSession - Saving with distance: " + distanceKm + " km");
         SharedPreferences sharedPreferences = requireContext().getSharedPreferences(SHARED_PREFS_TRAINING_HISTORY, Context.MODE_PRIVATE);
         SharedPreferences.Editor editor = sharedPreferences.edit();
 
@@ -744,38 +782,6 @@ public class HomeFragment extends Fragment implements TimerAdapter.OnTimerClickL
         Log.d(TAG, "Training session saved: Scheme=" + schemeName + ", Distance=" + distanceKm);
     }
 
-    private void updateLastTrainingSessionDistance(double distanceKm) {
-        SharedPreferences sharedPreferences = requireContext().getSharedPreferences(SHARED_PREFS_TRAINING_HISTORY, Context.MODE_PRIVATE);
-        SharedPreferences.Editor editor = sharedPreferences.edit();
-
-        String json = sharedPreferences.getString(TRAINING_HISTORY_LIST_KEY, null);
-        Type type = new TypeToken<ArrayList<TrainingSession>>() {}.getType();
-        List<TrainingSession> historyList = gson.fromJson(json, type);
-
-        if (historyList != null && !historyList.isEmpty()) {
-            // The most recent session is at index 0
-            TrainingSession lastSession = historyList.get(0);
-
-            double calculatedMeanSpeedKmH = 0.0;
-            if (lastSession.getDurationMillis() > 0) {
-                calculatedMeanSpeedKmH = (distanceKm / (lastSession.getDurationMillis() / 1000.0 / 3600.0)); // km/h
-            }
-
-            // Create a new TrainingSession with updated distance and mean speed, keeping other fields same
-            // This is safer than modifying the object directly if TrainingSession were immutable
-            TrainingSession updatedSession = new TrainingSession(lastSession.getSchemeName(), distanceKm, lastSession.getDurationMillis(), calculatedMeanSpeedKmH);
-            updatedSession.setTimestamp(lastSession.getTimestamp());
-            historyList.set(0, updatedSession);
-
-            String updatedJson = gson.toJson(historyList);
-            editor.putString(TRAINING_HISTORY_LIST_KEY, updatedJson);
-            editor.apply();
-            Log.d(TAG, "Last training session distance updated to: " + distanceKm + " km");
-        } else {
-            Log.w(TAG, "No training sessions found to update distance.");
-        }
-    }
-
     private void updateKeepScreenOn() {
         SharedPreferences sharedPreferences = requireContext().getSharedPreferences(SHARED_PREFS, Context.MODE_PRIVATE);
         boolean keepScreenOn = sharedPreferences.getBoolean(KEEP_SCREEN_ON_KEY, true);
@@ -786,68 +792,44 @@ public class HomeFragment extends Fragment implements TimerAdapter.OnTimerClickL
         }
     }
 
-    // Method to get the current scheme name (for MainActivity to update its title)
-    public String getCurrentSchemeName() {
-        return currentSchemeName;
-    }
-
-    // Method to update the current scheme name (when loading/saving schemes from MainActivity)
-    public void setCurrentSchemeName(String schemeName) {
-        this.currentSchemeName = schemeName;
-        // Optionally, update UI elements that display the scheme name within the fragment
-    }
-
-    // Methods for scheme management (called from MainActivity)
-    public void saveScheme(String schemeName) {
-        SharedPreferences sharedPreferences = requireContext().getSharedPreferences("sharedPrefsSchemes", Context.MODE_PRIVATE);
-        SharedPreferences.Editor editor = sharedPreferences.edit();
-
-        String timerListJson = gson.toJson(timerList);
-        editor.putString(schemeName + "_" + TIMER_LIST_KEY, timerListJson);
-
-        editor.putInt(schemeName + "_" + CURRENT_ROUND_KEY, currentRound);
-        editor.putInt(schemeName + "_" + TOTAL_ROUNDS_KEY, totalRounds);
-        editor.putInt(schemeName + "_" + CURRENT_TIMER_INDEX_KEY, currentTimerIndex);
-
-        Set<String> schemeNames = sharedPreferences.getStringSet("schemeNames", new HashSet<>());
-        schemeNames.add(schemeName);
-        editor.putStringSet("schemeNames", schemeNames);
-
-        editor.apply();
-    }
-
-    public void loadScheme(String schemeName) {
-        SharedPreferences sharedPreferences = requireContext().getSharedPreferences("sharedPrefsSchemes", Context.MODE_PRIVATE);
-
-        String timerListJson = sharedPreferences.getString(schemeName + "_" + TIMER_LIST_KEY, null);
-        Type type = new TypeToken<ArrayList<Timer>>() {}.getType();
-        timerList = gson.fromJson(timerListJson, type);
-
-        currentRound = sharedPreferences.getInt(schemeName + "_" + CURRENT_ROUND_KEY, 1);
-        totalRounds = sharedPreferences.getInt(schemeName + "_" + TOTAL_ROUNDS_KEY, 10);
-        currentTimerIndex = sharedPreferences.getInt(schemeName + "_" + CURRENT_TIMER_INDEX_KEY, 0);
-
-        if (timerList != null) {
-            for (Timer timer : timerList) {
-                timer.setTimeLeftInMillis(timer.getTotalTimeInMillis());
-                timer.setRunning(false);
-            }
-        } else {
-            timerList = new ArrayList<>();
-        }
-
-        timerAdapter.setTimers(timerList);
-        updateRoundDisplay();
-        updateTotalDurationDisplay();
-    }
-
-    public Set<String> getSavedSchemeNames() {
-        SharedPreferences sharedPreferences = requireContext().getSharedPreferences("sharedPrefsSchemes", Context.MODE_PRIVATE);
-        return sharedPreferences.getStringSet("schemeNames", new HashSet<>());
-    }
-
-    // Method to handle FAB click from MainActivity
     public void onFabClick() {
         addDefaultTimer();
+    }
+
+    // Getters for MainActivity to access HomeFragment's state
+    public List<Timer> getTimerList() {
+        return timerList;
+    }
+
+    public int getCurrentRound() {
+        return currentRound;
+    }
+
+    public int getTotalRounds() {
+        return totalRounds;
+    }
+
+    public int getCurrentTimerIndex() {
+        return currentTimerIndex;
+    }
+
+    // Setters for MainActivity to update HomeFragment's state
+    public void setTimers(List<Timer> timers) {
+        this.timerList = timers;
+        if (timerAdapter != null) {
+            timerAdapter.setTimers(this.timerList);
+        }
+    }
+
+    public void setCurrentRound(int currentRound) {
+        this.currentRound = currentRound;
+    }
+
+    public void setTotalRounds(int totalRounds) {
+        this.totalRounds = totalRounds;
+    }
+
+    public void setCurrentTimerIndex(int currentTimerIndex) {
+        this.currentTimerIndex = currentTimerIndex;
     }
 }

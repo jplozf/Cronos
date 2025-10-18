@@ -52,6 +52,7 @@ public class TrainingSessionAdapter extends RecyclerView.Adapter<TrainingSession
         TextView textViewSessionScheme;
         TextView textViewSessionDistance;
         TextView textViewSessionDuration;
+        TextView textViewSessionMeanSpeed;
         private OnItemLongClickListener longClickListener;
 
         public TrainingSessionViewHolder(@NonNull View itemView, OnItemLongClickListener longClickListener) {
@@ -60,6 +61,7 @@ public class TrainingSessionAdapter extends RecyclerView.Adapter<TrainingSession
             textViewSessionScheme = itemView.findViewById(R.id.text_view_session_scheme);
             textViewSessionDistance = itemView.findViewById(R.id.text_view_session_distance);
             textViewSessionDuration = itemView.findViewById(R.id.text_view_session_duration);
+            textViewSessionMeanSpeed = itemView.findViewById(R.id.text_view_session_mean_speed);
             this.longClickListener = longClickListener;
             itemView.setOnLongClickListener(this);
         }
@@ -69,6 +71,7 @@ public class TrainingSessionAdapter extends RecyclerView.Adapter<TrainingSession
             textViewSessionScheme.setText(String.format("Scheme: %s", session.getSchemeName()));
             textViewSessionDistance.setText(String.format(Locale.getDefault(), "Distance: %.2f km", session.getDistanceKm()));
             textViewSessionDuration.setText(String.format("Duration: %s", session.getFormattedDuration()));
+            textViewSessionMeanSpeed.setText(String.format(Locale.getDefault(), "Mean Speed: %.2f km/h", session.getMeanSpeedKmH()));
         }
 
         @Override
