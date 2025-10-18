@@ -204,7 +204,7 @@ public class SettingsTabFragment extends Fragment {
     }
 
     private void setVersionInfo() {
-        String version = "Cronos v" + BuildConfig.VERSION_NAME;
+        String version = "Cronos v" + BuildConfig.VERSION_NAME + " © JPL 2025";
         versionTextView.setText(version);
     }
 
