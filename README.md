@@ -6,7 +6,7 @@ Cronos is an Android application designed for outdoor fitness enthusiasts. It fu
 ## Features
 *   **Multi-Timer Functionality:** Create and manage multiple sequential timers for varied training routines.
 *   **Session Management:** Start, pause, stop, and reset entire training sessions.
-*   **Map-Based Tracking:** Track your movement during active training sessions on an integrated map.
+*   **Map-Based Tracking:** View your movement during active training sessions on an integrated map.
 *   **Training History:** View a detailed history of past training sessions, including:
     *   Date and Time
     *   Training Scheme Name
@@ -22,6 +22,16 @@ Cronos is an Android application designed for outdoor fitness enthusiasts. It fu
 *   **Intuitive UI:** A user-friendly interface with a tabbed navigation for Timers, Map, History, and Settings.
 *   **Standardized Color Scheme:** A visually appealing palette featuring green, brown, and khaki tones.
 *   **Custom Launcher Icons:** Unique application icons for a personalized look.
+
+## Screenshots
+
+![Timers tab](./pix/Screenshot_20251018_185747_Cronos.jpg "Timers")
+
+![Map View](./pix/Screenshot_20251018_185831_Cronos.jpg "Map")
+
+![History tab](./pix/Screenshot_20251018_185844_Cronos.jpg "History")
+
+![Settings tab](./pix/Screenshot_20251018_185817_Cronos.jpg "Settings")
 
 ## Installation and Setup
 
@@ -57,8 +67,7 @@ If you prefer to build and run Cronos on your Android device or emulator, follow
 *   **Control Session:** Use the Start, Pause, Stop, and Reset buttons to manage the entire timer sequence.
 
 ### Map Tab
-*   **Start Tracking:** Click the Floating Action Button (FAB) on the Map tab to begin tracking your movement.
-*   **Stop Tracking:** The tracking will automatically stop when you leave the Map tab or when a training session completes.
+*   **View Location:** Click the green Map Button on the Timers tab to view your current location on a map.
 
 ### History Tab
 *   **View Sessions:** See a list of your past training sessions with details like date, scheme, distance, duration, and mean speed.
